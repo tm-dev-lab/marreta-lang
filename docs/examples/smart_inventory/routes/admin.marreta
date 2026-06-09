@@ -1,0 +1,23 @@
+route POST "/inventory/:sku/reconcile"
+    product = db.products >> where(sku: params.sku) >> fetch_one
+    require product else fail 404, "product not found"
+
+    events = doc.inventory_events >> where("sku" == params.sku) >> fetch_all
+    expected = product.initial_stock + inventory.event_delta_total(events)
+    changed = expected != product.current_stock
+
+    if changed
+        db.products.update(product.id, { current_stock: expected })
+        cache.set(inventory.stock_key(params.sku), expected)
+        doc.inventory_events.save(inventory.stock_event("reconciliation_applied", params.sku, 0, expected, null, null, false))
+
+    reply 200 as ReconcileResponse, {
+        sku: params.sku,
+        before: product.current_stock,
+        after: expected,
+        changed: changed
+    }
+
+route GET "/inventory/:sku/events"
+    events = doc.inventory_events >> where("sku" == params.sku) >> order("created_at", "asc") >> fetch_all
+    reply 200, { sku: params.sku, events: events, count: events.length() }

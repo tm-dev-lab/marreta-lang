@@ -1,0 +1,17 @@
+# Auth is validated through the scenario mock (`given auth.<provider>`), which
+# short-circuits token validation while still enforcing `require auth` and `allow`.
+scenario "api_key route authorizes the matching principal"
+    given auth.e2e_key returns { sub: "e2e" }
+
+    when GET "/auth/apikey"
+
+    then status 200
+    then response is { body: { ok: true, principal: "e2e" } }
+
+scenario "jwt route authorizes via the mocked provider"
+    given auth.e2e_jwt returns { sub: "svc-1", roles: ["service"] }
+
+    when GET "/auth/jwt"
+
+    then status 200
+    then response is { body: { ok: true, subject: "svc-1" } }

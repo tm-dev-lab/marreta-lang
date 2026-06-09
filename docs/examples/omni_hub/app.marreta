@@ -1,0 +1,6 @@
+project_name = "omni-hub-api"
+project_version = "1.0.0"
+requires_marreta = ">=0.2.0"
+
+route GET "/health"
+    reply 200, { ok: true, api: project_name, version: project_version }

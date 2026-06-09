@@ -1,0 +1,360 @@
+# ═════════════════════════════════════════════════════════════════════════════
+# SECTION 17 — Direct CRUD  (requires DB)
+#
+# db.<table>.<op>() operations are one-liners for common cases.
+# They bypass the pipeline and map directly to INSERT/SELECT/UPDATE/DELETE.
+#
+# db.items.save(map)       → INSERT, returns full row with generated id
+# db.items.find(id)        → SELECT WHERE id = ?, returns map or null
+# db.items.find_all()      → SELECT *, returns list of maps
+# db.items.find_all(k: v)  → SELECT WHERE k = v
+# db.items.update(id, map) → UPDATE WHERE id = ?, returns updated row
+# db.items.delete(id)      → DELETE WHERE id = ?, returns boolean
+# ═════════════════════════════════════════════════════════════════════════════
+
+route POST "/db/items" take payload
+    row = db.items.save(payload)
+    reply 201, row
+
+route POST "/db/items/constructor"
+    item = ItemPayload { name: "constructor-db", active: true }
+    row = db.items.save(item)
+    reply 201 as ItemResponse, row
+
+route GET "/db/items/:id"
+    row = db.items.find(params.id)
+    require row else fail 404, "not found"
+    reply 200, row
+
+route GET "/db/items"
+    rows = db.items.find_all()
+    reply 200, { items: rows }
+
+route GET "/db/items/active"
+    # find_all(key: value) is shorthand for a single equality filter.
+    rows = db.items.find_all(active: true)
+    reply 200, { items: rows }
+
+route PUT "/db/items/:id" take payload
+    updated = db.items.update(params.id, payload)
+    reply 200, updated
+
+route DELETE "/db/items/:id"
+    deleted = db.items.delete(params.id)
+    require deleted else fail 404, "not found"
+    reply 200, { deleted: true }
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SECTION 18 — Pipeline queries  (requires DB)
+#
+# db.<table> opens a QueryBuilder — a lazy SQL context.
+# Steps accumulate clauses; nothing runs until a terminal is reached.
+#
+# Accumulating steps (return QueryBuilder):
+#   >> where(col: val)        equality filter
+#   >> where(col > val)       comparison filter
+#   >> like("col", "pat")      LIKE filter
+#   >> in("col", list)         IN filter
+#   >> order_by("col dir")    ORDER BY
+#   >> limit(n)               LIMIT
+#   >> offset(n)              OFFSET
+#
+# Terminal steps (execute SQL, return Value):
+#   >> fetch        → list of maps
+#   >> fetch_one    → first map or null
+#   >> count        → integer
+#   >> exists       → boolean
+#   >> update(map)  → integer (rows affected)
+#   >> delete       → integer (rows deleted)
+# ═════════════════════════════════════════════════════════════════════════════
+
+route GET "/db/pipeline/fetch"
+    rows = db.items >> fetch
+    reply 200, { items: rows }
+
+route GET "/db/pipeline/fetch_one"
+    row = db.items >> where(active: true) >> order_by("id asc") >> fetch_one
+    reply 200, { item: row }
+
+route GET "/db/pipeline/count"
+    n = db.items >> count
+    reply 200, { count: n }
+
+route GET "/db/pipeline/count/active"
+    n = db.items >> where(active: true) >> count
+    reply 200, { count: n }
+
+route GET "/db/pipeline/exists"
+    found = db.items >> where(active: true) >> exists
+    reply 200, { exists: found }
+
+route GET "/db/pipeline/where"
+    rows = db.items >> where(active: true) >> fetch
+    reply 200, { items: rows }
+
+route GET "/db/pipeline/order"
+    rows = db.items >> order_by("name asc") >> fetch
+    reply 200, { items: rows }
+
+route GET "/db/pipeline/page"
+    # Pagination: ORDER BY + LIMIT + OFFSET are independent steps, all
+    # accumulated lazily. The terminal (fetch) triggers the single SQL call.
+    rows = db.items >> order_by("id asc") >> limit(2) >> offset(0) >> fetch
+    reply 200, { items: rows }
+
+route GET "/db/pipeline/chained"
+    # Multiple where() calls are ANDed together: WHERE active=true AND id>0
+    n = db.items >> where(active: true) >> where(id > 0) >> count
+    reply 200, { count: n }
+
+route POST "/db/pipeline/deactivate"
+    # Bulk update — modifies all rows matching the filter, returns count affected.
+    n = db.items >> where(active: true) >> update({ active: false })
+    reply 200, { updated: n }
+
+route DELETE "/db/pipeline/inactive"
+    # Bulk delete — removes all inactive rows, returns count deleted.
+    n = db.items >> where(active: false) >> delete
+    reply 200, { deleted: n }
+
+route GET "/db/pipeline/like"
+    # like("col", "pattern") — LIKE filter, % wildcards supported.
+    rows = db.items >> like("name", "a%") >> fetch
+    reply 200, { items: rows }
+
+route GET "/db/pipeline/in"
+    # in("col", list) — IN filter, matches any value in the list.
+    rows = db.items >> in("name", ["alpha", "beta"]) >> fetch
+    reply 200, { items: rows }
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SECTION 18B — Relation navigation by convention  (requires DB)
+#
+# These routes exercise relation navigation by convention:
+# - singular persistent references expose `<field>_id` plus `<field>`
+# - `<field>` is a relation handle navigated with `>> fetch`
+# - inverse `list of <persistent>` relations are inferred when unambiguous
+# - optional singular relations short-circuit cleanly when no row exists
+# - relation fetches can be chained across the graph after materializing a row
+# ═════════════════════════════════════════════════════════════════════════════
+
+route GET "/db/relations/orders/:id"
+    order = db.orders.find(params.id)
+    require order else fail 404, "not found"
+    reply 200, order
+
+route GET "/db/relations/orders/:id/customer"
+    order = db.orders.find(params.id)
+    require order else fail 404, "order not found"
+    customer = order.customer >> fetch
+    require customer else fail 404, "customer not found"
+    reply 200, customer
+
+route GET "/db/relations/orders/:id/customer/exists"
+    order = db.orders.find(params.id)
+    require order else fail 404, "order not found"
+    reply 200, { exists: order.customer >> exists }
+
+route GET "/db/relations/orders/:id/customer/count"
+    order = db.orders.find(params.id)
+    require order else fail 404, "order not found"
+    reply 200, { count: order.customer >> count }
+
+route GET "/db/relations/orders/:id/customer/where"
+    order = db.orders.find(params.id)
+    require order else fail 404, "order not found"
+    customer = order.customer >> where(name: "Ana") >> fetch
+    reply 200, customer
+
+route GET "/db/relations/orders/:id/customer/address"
+    order = db.orders.find(params.id)
+    require order else fail 404, "order not found"
+    customer = order.customer >> fetch
+    require customer else fail 404, "customer not found"
+    address = customer.address >> fetch
+    reply 200, { address: address }
+
+route GET "/db/relations/orders/:id/total/fetch"
+    order = db.orders.find(params.id)
+    require order else fail 404, "order not found"
+    value = order.total >> fetch
+    reply 200, { value: value }
+
+route GET "/db/relations/users/:id"
+    user = db.users.find(params.id)
+    require user else fail 404, "user not found"
+    reply 200, user
+
+route GET "/db/relations/users/:id/address"
+    user = db.users.find(params.id)
+    require user else fail 404, "user not found"
+    reply 200, { address: user.address >> fetch }
+
+route GET "/db/relations/users/:id/address/exists"
+    user = db.users.find(params.id)
+    require user else fail 404, "user not found"
+    reply 200, { exists: user.address >> exists }
+
+route GET "/db/relations/users/:id/orders"
+    user = db.users.find(params.id)
+    require user else fail 404, "user not found"
+    orders = user.orders >> order_by("id asc") >> fetch
+    reply 200, { items: orders, count: orders.length() }
+
+route GET "/db/relations/users/:id/orders/count"
+    user = db.users.find(params.id)
+    require user else fail 404, "user not found"
+    reply 200, { count: user.orders >> count }
+
+route GET "/db/relations/users/:id/orders/exists"
+    user = db.users.find(params.id)
+    require user else fail 404, "user not found"
+    reply 200, { exists: user.orders >> exists }
+
+route GET "/db/relations/users/:id/orders/where"
+    user = db.users.find(params.id)
+    require user else fail 404, "user not found"
+    orders = user.orders >> where(total > 50) >> order_by("id asc") >> fetch
+    reply 200, { items: orders, count: orders.length() }
+
+route POST "/db/relations/users/reject-id"
+    user = db.users.save({ id: 99, name: "Injected" })
+    reply 200, user
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SECTION 18C — Temporal persistence  (requires DB)
+#
+# These routes prove that temporal schema fields survive save/find through the
+# relational layer with native behavior intact.
+# ═════════════════════════════════════════════════════════════════════════════
+
+route POST "/db/time_entries" take payload as TimePayload
+    saved = db.time_entries.save(payload)
+    loaded = db.time_entries.find(saved.id)
+    require loaded else fail 500, "time entry not found"
+
+    reply 201, {
+        id: loaded.id,
+        created_at: loaded.created_at,
+        created_unix: loaded.created_at.unix,
+        billing_date: loaded.billing_date,
+        opens_at: loaded.opens_at,
+        opening_hour: loaded.opens_at.hour,
+        sla_hours: loaded.sla.total_hours,
+        window_start: loaded.business_window.start,
+        window_end: loaded.business_window.end,
+        window_days: loaded.business_window.duration.total_days,
+        contains_date: time.contains(loaded.business_window, loaded.billing_date)
+    }
+
+route POST "/db/contract-types" take payload as ContractTypesPayload
+    saved = db.contract_type_records.save(payload)
+    loaded = db.contract_type_records.find(saved.id)
+    require loaded else fail 500, "contract type record not found"
+
+    reply 201 as ContractTypesPayload, {
+        status: loaded.status,
+        amount: loaded.amount,
+        ignored: "stripped"
+    }
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SECTION 19 — Parallel DB queries  (requires DB)
+#
+# *>> with DB branches: each branch receives the same QueryBuilder.
+# Branches run concurrently — useful to fetch count + rows in one round-trip.
+# ═════════════════════════════════════════════════════════════════════════════
+
+route GET "/db/parallel"
+    # The QueryBuilder (db.items >> where(active:true)) is cloned for each branch.
+    # Both hit the DB at the same time; results arrive in declaration order.
+    results = db.items >> where(active: true) *>>
+        -> core.count_active
+        -> core.list_active
+    reply 200, { count: results.first(), items: results.last() }
+
+route GET "/db/parallel/mixed"
+    # One branch queries DB; the other returns static metadata. Still parallel.
+    task get_rows(q)
+        q >> order_by("id asc") >> fetch
+
+    task get_meta(_)
+        { source: "items", queried_at: "now" }
+
+    results = db.items *>>
+        -> get_rows
+        -> get_meta
+    reply 200, { items: results.first(), meta: results.last() }
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SECTION 20 — Native query  (requires DB)
+#
+# db.native_query("SQL with #{expr}") is an escape hatch for SQL that the
+# pipeline cannot express (JOINs, CTEs, window functions, etc.).
+# #{} placeholders are evaluated as MarretaLang expressions, then bound as
+# prepared-statement parameters — never concatenated, so SQL injection is
+# structurally impossible.
+# ═════════════════════════════════════════════════════════════════════════════
+
+route GET "/db/native/all"
+    rows = db.native_query("SELECT id, name FROM items ORDER BY id ASC")
+    reply 200, { items: rows }
+
+route GET "/db/native/by_name/:name"
+    # #{params.name} is evaluated, then bound as a prepared-statement param.
+    rows = db.native_query("SELECT * FROM items WHERE name = #{params.name}")
+    reply 200, { items: rows }
+
+route GET "/db/native/search"
+    # Two #{} placeholders: first is a boolean, second is an integer.
+    min_id = 0
+    rows = db.native_query(
+        "SELECT * FROM items WHERE active = #{true} AND id > #{min_id} ORDER BY name ASC"
+    )
+    reply 200, { items: rows }
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SECTION 21 — Transactions  (requires DB)
+#
+# All DB operations inside a `transaction` block share one postgres connection.
+# On success: commits automatically.
+# On any error (DB failure, `fail` call, `require` violation): rolls back.
+#
+# *>> inside a transaction is a runtime error — parallel execution and
+# atomicity are mutually exclusive by design.
+# ═════════════════════════════════════════════════════════════════════════════
+
+# Commit path: both saves succeed, transaction commits, both IDs are returned.
+route POST "/db/transaction/commit"
+    transaction
+        a = db.items.save({ name: "tx-commit-a", active: true })
+        b = db.items.save({ name: "tx-commit-b", active: false })
+    reply 201, { a_id: a.id, b_id: b.id }
+
+# Rollback path: a save runs, then `fail` is called.
+# The entire transaction is undone — the row must NOT exist after this request.
+route POST "/db/transaction/rollback"
+    transaction
+        db.items.save({ name: "tx-will-rollback", active: true })
+        fail 500, { error: "intentional rollback" }
+    reply 201, { committed: true }
+
+# Controlled path: caller decides commit or rollback via payload.
+# Useful for verifying both paths from a single endpoint.
+# POST { "should_commit": true }  → 200, row committed
+# POST { "should_commit": false } → 500, row rolled back
+route POST "/db/transaction/conditional" take payload
+    count_before = db.items >> where(name: "tx-conditional") >> count
+
+    transaction
+        db.items.save({ name: "tx-conditional", active: true })
+        require payload.should_commit else fail 500, "caller triggered rollback"
+
+    count_after = db.items >> where(name: "tx-conditional") >> count
+    reply 200, { committed: true, before: count_before, after: count_after }

@@ -1,0 +1,130 @@
+# ═════════════════════════════════════════════════════════════════════════════
+# SECTION 26 — Parallel broadcast (POST routes)
+#
+# Functional validation of parallel broadcast (*>>) combinations.
+#
+# Three routes, each exercising a different combination:
+#
+#   POST /analyze/text   — scalar input *>> parallel tasks
+#   POST /analyze/list   — List input *>> parallel aggregations (no implicit iteration)
+#   POST /analyze/chain  — *>> result >> map (broadcast then sequential pipeline)
+# ═════════════════════════════════════════════════════════════════════════════
+
+# ─── shared tasks ─────────────────────────────────────────────────────────────
+
+export task count_words(text)
+    text.split(" ").length()
+
+export task count_chars(text)
+    text.length()
+
+export task to_upper(text)
+    text.upper()
+
+export task to_lower(text)
+    text.lower()
+
+export task list_length(lst)
+    lst.length()
+
+export task list_first(lst)
+    lst.first()
+
+export task list_last(lst)
+    lst.last()
+
+export task add_two(n)
+    n + 2
+
+# ─── Route 1: scalar *>> parallel tasks ───────────────────────────────────────
+#
+# Input:  { "text": "hello world" }
+# Output: { "word_count": 2, "uppercased": "HELLO WORLD" }
+#
+# All tasks run in parallel on the same scalar input.
+
+route POST "/analyze/text" take payload
+    require payload.text else fail 400, "field 'text' is required"
+
+    text = payload.text
+
+    # results = [word_count, char_count, uppercased, lowercased] — declaration order guaranteed
+    results = text *>>
+        -> count_words
+        -> count_chars
+        -> to_upper
+        -> to_lower
+
+    reply 200, {
+        word_count: results.first(),
+        char_count: results[1],
+        uppercased: results[2],
+        lowercased: results.last()
+    }
+
+# ─── Route 2: List *>> parallel aggregations ──────────────────────────────────
+#
+# Input:  { "numbers": [10, 20, 30, 40, 50] }
+# Output: { "length": 5, "last": 50 }
+#
+# Each branch receives the FULL list — not individual elements.
+# This is different from >> which would iterate over elements.
+
+route POST "/analyze/list" take payload
+    require payload.numbers else fail 400, "field 'numbers' is required"
+
+    numbers = payload.numbers
+
+    results = numbers *>>
+        -> list_length
+        -> list_first
+        -> list_last
+
+    reply 200, { length: results.first(), last: results.last() }
+
+# ─── Route 3: *>> result >> map (broadcast then pipeline) ─────────────────────
+#
+# Input:  { "value": 5 }
+# Output: { "results": [12, 17], "count": 2 }
+#
+# *>> returns [double(5), triple(5)] = [10, 15]
+# >> map adds 2 to each element → [12, 17]
+# demonstrates that *>> result flows naturally into the language pipeline.
+
+route POST "/analyze/chain" take payload
+    require payload.value else fail 400, "field 'value' is required"
+
+    n = payload.value
+
+    broadcast_results = n *>>
+        -> core.double
+        -> core.triple
+
+    final = broadcast_results >> map item
+        keep add_two(item)
+
+    reply 200, { results: final, count: final.length() }
+
+route GET "/analyze/time"
+    created_at = time.instant("2026-04-27T13:10:45Z")
+
+    results = created_at *>>
+        -> core.time_hour
+        -> core.time_unix
+
+    reply 200, {
+        hour: results.first(),
+        unix: results.last()
+    }
+
+route GET "/analyze/math"
+    value = -4.876
+
+    results = value *>>
+        -> math.abs()
+        -> math.round(places: 2)
+
+    reply 200, {
+        abs: results.first(),
+        rounded: results.last()
+    }

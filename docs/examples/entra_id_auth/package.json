@@ -1,0 +1,12 @@
+{
+  "name": "marreta-entra-id-auth-validation",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "token": "node get_token.mjs"
+  },
+  "dependencies": {
+    "@azure/identity": "^4.13.0"
+  }
+}

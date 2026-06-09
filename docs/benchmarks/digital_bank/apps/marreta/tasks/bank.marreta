@@ -1,0 +1,20 @@
+# Reusable bank helpers shared across the routes.
+
+# Load an account by id or stop the request with a 404. `label` names the
+# account in the error message (e.g. "account", "source account").
+export task load_account(id, label)
+    account = doc.accounts.find(id)
+    require account else fail 404, "#{label} not found"
+
+    account
+
+# Append a ledger entry and return the persisted transaction document.
+export task record_transaction(account_id, kind, amount, balance_after, counterparty)
+    doc.transactions.save({
+        account_id: account_id,
+        type: kind,
+        amount: amount,
+        balance_after: balance_after,
+        counterparty: counterparty,
+        created_at: time.now()
+    })

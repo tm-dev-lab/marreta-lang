@@ -1,0 +1,14 @@
+scenario "log interpolation emits resolved message"
+    when POST "/log/interpolation" with {
+        order_id: 42,
+        customer: "Ana"
+    }
+
+    then status 200
+    then response is {
+        body: {
+            ok: true,
+            order_id: 42,
+            customer: "Ana"
+        }
+    }

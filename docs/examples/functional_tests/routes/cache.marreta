@@ -1,0 +1,114 @@
+# -- Section 29 -- Cache module (v0.9) -----------------------------------------
+#
+# Covers all cache operations from 014_CACHE.md:
+#   - cache.set / cache.get (basic key-value)
+#   - cache.set with ttl: (time-to-live)
+#   - cache.set with only_if_absent: true (idempotency)
+#   - cache.delete / cache.exists
+#   - cache.ttl / cache.expire (TTL inspection and refresh)
+#   - cache.incr / cache.decr (atomic counters)
+#   - cache.get_many / cache.set_many (bulk operations)
+#   - pipeline: value >> cache.set >> reply (flow-through)
+#
+# Requires: MARRETA_CACHE_PROVIDER, MARRETA_CACHE_HOST, MARRETA_CACHE_PORT, and optional MARRETA_CACHE_PASSWORD (Redis)
+# ------------------------------------------------------------------------------
+
+# -- Basic set/get -------------------------------------------------------------
+
+route POST "/cache/set" take payload
+    cache.set(payload.key, payload.value)
+    reply 200, { ok: true }
+
+route GET "/cache/get/:key"
+    result = cache.get(key)
+    reply 200, { key: key, value: result }
+
+# -- Set with TTL --------------------------------------------------------------
+
+route POST "/cache/set-ttl" take payload
+    cache.set(payload.key, payload.value, ttl: 300)
+    reply 200, { ok: true }
+
+# -- Set only_if_absent (idempotency) -----------------------------------------
+
+route POST "/cache/set-nx" take payload
+    result = cache.set(payload.key, payload.value, only_if_absent: true)
+    reply 200, { stored: result }
+
+# -- Delete --------------------------------------------------------------------
+
+route DELETE "/cache/delete/:key"
+    existed = cache.delete(key)
+    reply 200, { existed: existed }
+
+# -- Exists --------------------------------------------------------------------
+
+route GET "/cache/exists/:key"
+    found = cache.exists(key)
+    reply 200, { exists: found }
+
+# -- TTL / Expire --------------------------------------------------------------
+
+route GET "/cache/ttl/:key"
+    remaining = cache.ttl(key)
+    reply 200, { ttl: remaining }
+
+route POST "/cache/expire" take payload
+    ok = cache.expire(payload.key, ttl: 600)
+    reply 200, { refreshed: ok }
+
+# -- Incr / Decr ---------------------------------------------------------------
+
+route POST "/cache/incr" take payload
+    val = cache.incr(payload.key)
+    reply 200, { value: val }
+
+route POST "/cache/incr-by" take payload
+    val = cache.incr(payload.key, by: 5, ttl: 120)
+    reply 200, { value: val }
+
+route POST "/cache/decr" take payload
+    val = cache.decr(payload.key)
+    reply 200, { value: val }
+
+# -- Bulk get/set --------------------------------------------------------------
+
+route POST "/cache/set-many" take payload
+    cache.set_many(payload.entries, ttl: 60)
+    reply 200, { ok: true }
+
+route POST "/cache/get-many" take payload
+    result = cache.get_many(payload.keys)
+    reply 200, result
+
+# -- Pipeline (cache.set returns value) ----------------------------------------
+
+route POST "/cache/pipeline" take payload
+    result = payload >> cache.set("pipeline_test")
+    reply 200, result
+
+# -- Time payload transport through cache -------------------------------------
+
+route POST "/time/cache_transport" take payload as TimePayload
+    cache.set("time:transport", payload)
+    cached = cache.get("time:transport")
+
+    reply 200, {
+        cached_created_at: cached.created_at,
+        cached_billing_date: cached.billing_date,
+        cached_opens_at: cached.opens_at,
+        cached_sla: cached.sla,
+        cached_window_start: cached.business_window.start
+    }
+
+route POST "/math/cache_counter" take payload
+    cache.delete("math:counter")
+    step = payload.step >> math.ceil()
+    current = cache.incr("math:counter", by: step)
+    bounded = math.clamp(current, min: 0, max: 10)
+
+    reply 200, {
+        step: step,
+        current: current,
+        bounded: bounded
+    }

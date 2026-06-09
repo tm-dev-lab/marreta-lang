@@ -1,0 +1,22 @@
+scenario "calls upstream through http client mock"
+    given http_client.get("http://127.0.0.1:3737/stub/user/42") returns {
+        status: 200,
+        body: {
+            id: 42,
+            name: "Scenario Alice",
+            email: "scenario@example.com"
+        },
+        headers: {
+            content_type: "application/json"
+        }
+    }
+
+    when GET "/http-client/get/42"
+
+    then status 200
+    then response is {
+        body: {
+            id: 42,
+            name: "Scenario Alice"
+        }
+    }

@@ -1,0 +1,62 @@
+services:
+  mongodb:
+    image: mongo:latest
+    environment:
+      MONGO_INITDB_DATABASE: ecommerce
+    ports:
+      - "27017:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ecommerce
+      POSTGRES_USER: marreta
+      POSTGRES_PASSWORD: marreta
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./seed.sql:/docker-entrypoint-initdb.d/seed.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U marreta -d ecommerce"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    image: ${MARRETA_IMAGE:-marreta-lang:dev}
+    user: "${MARRETA_UID:-0}:${MARRETA_GID:-0}"
+    volumes:
+      - ./:/app
+    working_dir: /app
+    environment:
+      HOME: /tmp
+      MARRETA_DB_PROVIDER: postgres
+      MARRETA_DB_HOST: postgres
+      MARRETA_DB_PORT: 5432
+      MARRETA_DB_NAME: ecommerce
+      MARRETA_DB_USER: marreta
+      MARRETA_DB_PASSWORD: marreta
+      MARRETA_DOC_PROVIDER: mongodb
+      MARRETA_DOC_HOST: mongodb
+      MARRETA_DOC_PORT: 27017
+      MARRETA_DOC_NAME: ecommerce
+      MARRETA_PORT: 3939
+    ports:
+      - "3939:3939"
+    command: ["serve", "--port", "3939"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:3939/_health >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s

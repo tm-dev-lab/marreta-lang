@@ -1,0 +1,112 @@
+{
+  "Route": {
+    "prefix": "route",
+    "body": [
+      "route ${1|GET,POST,PUT,PATCH,DELETE|} \"${2:/path}\"",
+      "    reply ${3:200}, ${4:{ ok: true }}"
+    ],
+    "description": "Create a Marreta route"
+  },
+  "Task": {
+    "prefix": "task",
+    "body": [
+      "task ${1:name}(${2:arg})",
+      "    ${3:arg}"
+    ],
+    "description": "Create a Marreta task"
+  },
+  "Schema": {
+    "prefix": "schema",
+    "body": [
+      "schema ${1:Name}",
+      "    ${2:field}: ${3|string,integer,float,decimal,boolean|}"
+    ],
+    "description": "Create a Marreta schema"
+  },
+  "Require Else Fail": {
+    "prefix": "require",
+    "body": [
+      "require ${1:condition} else fail ${2:400}, ${3:{ error: \"bad_request\" }}"
+    ],
+    "description": "Create a guard with fail response"
+  },
+  "On Queue": {
+    "prefix": "on queue",
+    "body": [
+      "on queue \"${1:queue.name}\" take ${2:message}",
+      "    ${3:log.info($2)}"
+    ],
+    "description": "Create a point-to-point queue consumer"
+  },
+  "On Topic": {
+    "prefix": "on topic",
+    "body": [
+      "on topic \"${1:topic.name}\" take ${2:event}",
+      "    ${3:log.info($2)}"
+    ],
+    "description": "Create an exact-topic consumer"
+  },
+  "Scenario": {
+    "prefix": "scenario",
+    "body": [
+      "scenario \"${1:name}\"",
+      "    when ${2|GET,POST,PUT,PATCH,DELETE|} \"${3:/path}\"",
+      "    then status ${4:200}"
+    ],
+    "description": "Create an API scenario test"
+  },
+  "Reply": {
+    "prefix": "reply",
+    "body": ["reply ${1:200}, ${2:{ ok: true }}"],
+    "description": "Reply with an HTTP response"
+  },
+  "Fail": {
+    "prefix": "fail",
+    "body": ["fail ${1:400}, ${2:{ error: \"bad_request\" }}"],
+    "description": "Terminate the route with an error response"
+  },
+  "Match": {
+    "prefix": "match",
+    "body": [
+      "match ${1:value}",
+      "    ${2:\"a\"} => ${3:reply 200, { ok: true }}",
+      "    fallback => ${4:fail 404, { error: \"not_found\" }}"
+    ],
+    "description": "Pattern match"
+  },
+  "If Else": {
+    "prefix": "if",
+    "body": ["if ${1:condition}", "    ${2:reply 200, { ok: true }}", "else", "    ${3:fail 400, { error: \"bad\" }}"],
+    "description": "If/else block"
+  },
+  "Auth (api_key)": {
+    "prefix": "auth",
+    "body": [
+      "auth ${1|api_key,jwt|} ${2:name} {",
+      "    ${3:header: \"x-api-key\"}",
+      "}"
+    ],
+    "description": "Declare an auth provider"
+  },
+  "Take": {
+    "prefix": "take",
+    "body": ["take ${1:payload} as ${2:Schema}"],
+    "description": "Bind and validate the request body"
+  },
+  "Pipeline": {
+    "prefix": "pipeline",
+    "body": ["${1:value} >> ${2:task_name}"],
+    "description": "Pipe a value through a task"
+  },
+  "HTTP client": {
+    "prefix": "http_client",
+    "body": ["${1:response} = http_client.${2|get,post,put,patch,delete|}(\"${3:https://example.test}\")"],
+    "description": "Outbound HTTP request"
+  },
+  "DB query": {
+    "prefix": "db",
+    "body": ["${1:item} = db.${2:table}.find(${3:id})"],
+    "description": "Query the database"
+  }
+}
+

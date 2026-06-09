@@ -1,0 +1,45 @@
+export schema Product
+    db: products
+
+    id: integer
+    sku: string
+    name: string
+    initial_stock: integer
+    current_stock: integer
+    reserved_stock: integer
+    low_stock_threshold: integer
+
+export schema Reservation
+    db: reservations
+
+    id: integer
+    order_id: string
+    sku: string
+    quantity: integer
+    status: string
+
+export schema SeedProductRequest
+    sku: string
+    name: string
+    initial_stock: integer
+    low_stock_threshold: integer
+
+export schema ReserveRequest
+    order_id: string
+    sku: string
+    quantity: integer
+
+export schema ShipmentMessage
+    shipment_id: string
+    sku: string
+    quantity: integer
+
+export schema CancellationMessage
+    order_id: string
+    reason: string
+
+export schema ReconcileResponse
+    sku: string
+    before: integer
+    after: integer
+    changed: boolean

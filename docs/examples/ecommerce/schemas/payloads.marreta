@@ -1,0 +1,45 @@
+# --- Supporting schemas (v0.4.0: used as nested references) ---
+
+export schema Address
+    street: string
+    city: string
+    zipcode: string
+
+export schema OrderItem
+    product_id: integer
+    quantity: integer
+
+# --- Request schemas ---
+
+export schema ProductPayload
+    name: string
+    price: float
+    category: string
+
+export schema OrderPayload
+    items: list of OrderItem
+    billing: Address
+    coupon?: string
+
+# --- Response schemas ---
+
+export schema ProductCreated
+    created: boolean
+    name: string
+    price: float
+
+export schema OrderCreated
+    order_created: boolean
+    order_id: integer
+    item_count: integer
+    city: string
+    coupon: string
+    discount_rate: float
+
+export schema OrderCreatedDoc
+    order_created: boolean
+    order_id: string
+    item_count: integer
+    city: string
+    coupon: string
+    discount_rate: float

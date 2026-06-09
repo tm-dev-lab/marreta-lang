@@ -1,0 +1,31 @@
+scenario "valid user payload is accepted"
+    when POST "/contracts/users" with { name: "Ana", age: 30, active: true }
+    then status 201
+    then response is { body: { name: "Ana", age: 30, active: true } }
+
+scenario "missing required field is rejected"
+    when POST "/contracts/users" with { name: "Ana" }
+    then status 422
+
+scenario "rich order (enum, decimal, list, instant, nested) is accepted"
+    when POST "/contracts/order" with {
+        customer: "Ana",
+        amount: "99.90",
+        status: "paid",
+        tags: ["a", "b"],
+        created_at: "2026-04-27T13:10:45Z",
+        address: { city: "SP" }
+    }
+    then status 201
+    then response is { body: { customer: "Ana", status: "paid", city: "SP", first_tag: "a" } }
+
+scenario "value outside the enum is rejected"
+    when POST "/contracts/order" with {
+        customer: "Ana",
+        amount: "1",
+        status: "shipped",
+        tags: [],
+        created_at: "2026-04-27T13:10:45Z",
+        address: { city: "SP" }
+    }
+    then status 422

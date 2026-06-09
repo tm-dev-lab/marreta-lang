@@ -1,0 +1,49 @@
+export task stock_key(sku)
+    "stock:#{sku}"
+
+export task audit_key(event_type, sku)
+    "audit:#{event_type}:#{sku}"
+
+export task stock_event(event_type, sku, quantity, stock_after, order_id, reason, status_critical)
+    {
+        event_id: uuid.v7(),
+        event_type: event_type,
+        sku: sku,
+        quantity: quantity,
+        order_id: order_id,
+        reason: reason,
+        stock_after: stock_after,
+        status_critical: status_critical,
+        created_at: time.now()
+    }
+
+export task event_delta(event)
+    match event.event_type
+        "shipment_received" -> event.quantity
+        "order_cancelled" -> event.quantity
+        "order_reserved" -> 0 - event.quantity
+        fallback -> 0
+
+export task event_delta_total(events)
+    events >> reduce(0) acc, event
+        acc + event_delta(event)
+
+export task record_inventory_audit(event)
+    doc.inventory_events.save({
+        event_id: uuid.v7(),
+        event_type: "audit_recorded",
+        sku: event.sku,
+        quantity: event.quantity or 0,
+        order_id: event.order_id,
+        reason: event.reason,
+        stock_after: event.stock_after,
+        status_critical: event.event_type == "inventory.low_stock",
+        source_event_type: event.event_type,
+        created_at: time.now()
+    })
+    cache.set(audit_key(event.event_type, event.sku), true, ttl: 300)
+    log.info({
+        event: "smart_inventory.audit_recorded",
+        source_event_type: event.event_type,
+        sku: event.sku
+    })

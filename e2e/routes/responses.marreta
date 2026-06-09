@@ -1,0 +1,17 @@
+task discount(price, tier) => price * tier
+
+# json reply + task return value (inline task)
+route GET "/responses/json"
+    reply 200, { total: discount(100, 1), ok: true }
+
+# html reply
+route GET "/responses/html"
+    reply html 200, "<h1>Marreta</h1>"
+
+# text reply
+route GET "/responses/text"
+    reply text 200, "pong"
+
+# explicit fail
+route GET "/responses/fail"
+    fail 418, "i am a teapot"

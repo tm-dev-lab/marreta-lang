@@ -1,0 +1,15 @@
+scenario "authorizes jwt route with explicit jwks provider"
+    given auth.scenario_jwks_auth returns {
+        sub: "user-456",
+        roles: ["admin"]
+    }
+
+    when GET "/auth/scenario-jwks"
+
+    then status 200
+    then response is {
+        body: {
+            user_id: "user-456",
+            provider: "scenario_jwks_auth"
+        }
+    }

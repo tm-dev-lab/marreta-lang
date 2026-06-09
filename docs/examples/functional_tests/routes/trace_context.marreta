@@ -1,0 +1,30 @@
+# -- Section 36 -- W3C Trace Context (runtime-only) ----------------------------
+#
+# Covers 035_W3C_TRACE_CONTEXT.md:
+#   - inbound traceparent is accepted by runtime middleware
+#   - log.* receives trace_id/span_id automatically
+#   - http_client.* propagates traceparent/tracestate automatically
+#   - no MarretaLang trace/correlation namespace is required
+# -----------------------------------------------------------------------------
+
+route GET "/trace-context/stub/headers" take headers
+    reply 200, {
+        traceparent: headers["traceparent"] or "missing",
+        tracestate: headers["tracestate"] or "missing"
+    }
+
+route POST "/trace-context/log" take payload
+    log.info({
+        event: "trace.context.checked",
+        order_id: payload.order_id
+    })
+
+    reply 200, {
+        ok: true,
+        order_id: payload.order_id
+    }
+
+route GET "/trace-context/outbound"
+    response = http_client.get("http://127.0.0.1:3737/trace-context/stub/headers")
+
+    reply 200, response.body

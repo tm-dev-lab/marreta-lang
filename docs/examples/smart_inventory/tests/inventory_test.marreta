@@ -1,0 +1,11 @@
+scenario "health endpoint exposes benchmark metadata"
+    when GET "/health"
+
+    then status 200
+    then response is {
+        body: {
+            ok: true,
+            app: "smart-inventory",
+            version: "0.1.0"
+        }
+    }

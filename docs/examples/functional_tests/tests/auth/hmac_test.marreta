@@ -1,0 +1,15 @@
+scenario "authorizes jwt route with fixed hmac provider"
+    given auth.scenario_hmac_auth returns {
+        sub: "service-123",
+        roles: ["service"]
+    }
+
+    when GET "/auth/scenario-hmac"
+
+    then status 200
+    then response is {
+        body: {
+            user_id: "service-123",
+            provider: "scenario_hmac_auth"
+        }
+    }

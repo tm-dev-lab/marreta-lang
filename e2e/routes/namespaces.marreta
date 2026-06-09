@@ -1,0 +1,67 @@
+# math namespace (abs/ceil/floor/round/min/max/clamp)
+route GET "/ns/math"
+    reply 200, {
+        abs: math.abs(-4),
+        ceil: math.ceil(2.1),
+        floor: math.floor(2.9),
+        round: math.round(3.14159, places: 2),
+        min: math.min(3, 9),
+        max: math.max(3, 9),
+        clamp: math.clamp(15, min: 0, max: 10)
+    }
+
+# json namespace (parse / stringify / pretty)
+route POST "/ns/json" take raw
+    parsed = json.parse(raw)
+    reply 200, {
+        name: parsed.name,
+        compact: json.stringify(parsed),
+        pretty_has_newline: json.pretty(parsed).contains("\n")
+    }
+
+# base64 namespace (standard + url_safe)
+route GET "/ns/base64"
+    standard = base64.encode("marreta")
+    url = base64.encode("marreta", url_safe: true)
+    reply 200, {
+        standard: standard,
+        decoded: base64.decode(standard),
+        url_safe: url,
+        url_decoded: base64.decode(url, url_safe: true)
+    }
+
+# uuid namespace (v4 + v7); non-deterministic, assert shape
+route GET "/ns/uuid"
+    reply 200, { v4: uuid.v4(), v7: uuid.v7() }
+
+# time namespace (deterministic ops + a now property)
+route GET "/ns/time"
+    start = time.date("2026-04-27")
+    finish = time.date("2026-05-02")
+    window = time.interval(start, finish)
+    reply 200, {
+        formatted: time.format(start, "dd/MM/yyyy"),
+        contains: time.contains(window, time.date("2026-04-29")),
+        year: time.now().year
+    }
+
+# fs namespace round-trip (write / read / append / exists / delete) under /tmp
+route GET "/ns/fs"
+    path = "/tmp/marreta-e2e-fs.txt"
+    fs.write(path, "hammer")
+    fs.append(path, "ed")
+    contents = fs.read(path)
+    existed = fs.exists(path)
+    deleted = fs.delete(path)
+    reply 200, { contents: contents, existed: existed, deleted: deleted, gone: fs.exists(path) }
+
+# feature flags (MARRETA_FEATURE_BETA=true; an unset flag is false)
+route GET "/ns/feature"
+    reply 200, { beta: feature.enabled("beta"), missing: feature.enabled("nope") }
+
+# log namespace (info/warn/error are pass-through; confirm the route runs)
+route GET "/ns/log"
+    log.info("e2e info")
+    log.warn("e2e warn")
+    log.error("e2e error")
+    reply 200, { logged: true }

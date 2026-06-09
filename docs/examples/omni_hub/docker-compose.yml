@@ -1,0 +1,96 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: omni_hub
+      POSTGRES_USER: marreta
+      POSTGRES_PASSWORD: marreta
+    ports:
+      - "5436:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U marreta -d omni_hub"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+
+  mongodb:
+    image: mongo:latest
+    environment:
+      MONGO_INITDB_DATABASE: omni_hub
+    ports:
+      - "27020:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    ports:
+      - "5673:5672"
+      - "15673:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6381:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+
+  app:
+    image: ${MARRETA_IMAGE:-marreta-lang:dev}
+    user: "${MARRETA_UID:-0}:${MARRETA_GID:-0}"
+    volumes:
+      - ${MARRETA_APP_PROJECT_DIR:-./}:/app
+    working_dir: /app
+    environment:
+      HOME: /tmp
+      MARRETA_DB_PROVIDER: postgres
+      MARRETA_DB_HOST: postgres
+      MARRETA_DB_PORT: 5432
+      MARRETA_DB_NAME: omni_hub
+      MARRETA_DB_USER: marreta
+      MARRETA_DB_PASSWORD: marreta
+      MARRETA_DOC_PROVIDER: mongodb
+      MARRETA_DOC_HOST: mongodb
+      MARRETA_DOC_PORT: 27017
+      MARRETA_DOC_NAME: omni_hub
+      MARRETA_QUEUE_PROVIDER: rabbitmq
+      MARRETA_QUEUE_HOST: rabbitmq
+      MARRETA_QUEUE_PORT: 5672
+      MARRETA_QUEUE_USER: guest
+      MARRETA_QUEUE_PASSWORD: guest
+      MARRETA_CACHE_PROVIDER: redis
+      MARRETA_CACHE_HOST: redis
+      MARRETA_CACHE_PORT: 6379
+      MARRETA_PORT: 3941
+    ports:
+      - "3941:3941"
+    command: ["serve", "--port", "3941"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:3941/_health >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s

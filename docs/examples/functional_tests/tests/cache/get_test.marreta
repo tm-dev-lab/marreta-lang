@@ -1,0 +1,18 @@
+scenario "reads cache through cache mock"
+    given cache.get("scenario-cache-key") returns {
+        source: "cache",
+        value: 99
+    }
+
+    when GET "/cache/get/scenario-cache-key"
+
+    then status 200
+    then response is {
+        body: {
+            key: "scenario-cache-key",
+            value: {
+                source: "cache",
+                value: 99
+            }
+        }
+    }

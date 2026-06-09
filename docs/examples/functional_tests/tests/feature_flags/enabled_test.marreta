@@ -1,0 +1,21 @@
+scenario "reads feature flag snapshot"
+    when GET "/feature-flags/enabled"
+
+    then status 200
+    then response is {
+        body: {
+            feature: "functional_flag",
+            enabled: true
+        }
+    }
+
+scenario "missing feature flag is false"
+    when GET "/feature-flags/missing"
+
+    then status 200
+    then response is {
+        body: {
+            feature: "missing_flag",
+            enabled: false
+        }
+    }

@@ -1,0 +1,19 @@
+route GET "/secure"
+    require auth entra_id
+    reply 200, {
+        ok: true,
+        provider: auth.provider,
+        subject: auth.subject,
+        user_id: auth.user.id,
+        issuer: auth.claims.iss,
+        audience: auth.claims.aud,
+        roles: auth.user.roles
+    }
+
+route GET "/secure/role"
+    require auth entra_id
+    allow "marreta.validation" in auth.user.roles
+    reply 200, {
+        ok: true,
+        role: "marreta.validation"
+    }

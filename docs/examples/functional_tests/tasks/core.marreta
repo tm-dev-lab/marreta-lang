@@ -1,0 +1,54 @@
+# ── Tasks ─────────────────────────────────────────────────────────────────────
+#
+# Tasks are reusable named functions, defined at the top level so all routes
+# can call them. They can also be defined inline inside a route body.
+#
+# Inline syntax:  task name(param) => expression  (single-expression body)
+# Block syntax:   task name(param)                (multi-statement body)
+#                     statement
+#                     expression                  (last expression is returned)
+
+export task double(n) => n * 2
+
+export task triple(n) => n * 3
+
+export task choose_double() => double
+
+export task greet(name)
+    # Block task — last expression is the return value.
+    greeting = "Hello, " + name + "!"
+    greeting
+
+export task summarise(items)
+    # Receives a list, returns a summary map.
+    { count: items.length(), first: items.first(), last: items.last() }
+
+# Used by *>> parallel sections — each receives the same QueryBuilder.
+export task count_active(q)
+    q >> count
+
+export task list_active(q)
+    q >> fetch
+
+export task inspect_time_payload(payload as TimePayload)
+    {
+        created_year: payload.created_at.year,
+        created_unix: payload.created_at.unix,
+        billing_year: payload.billing_date.year,
+        billing_weekday: payload.billing_date.weekday,
+        opening_hour: payload.opens_at.hour,
+        opening_minute: payload.opens_at.minute,
+        opening_on_date: payload.opens_at.on(payload.billing_date),
+        sla_hours: payload.sla.total_hours,
+        window_days: interval_days(payload.business_window),
+        window_contains_date: time.contains(payload.business_window, payload.billing_date)
+    }
+
+export task time_hour(value)
+    value.hour
+
+export task time_unix(value)
+    value.unix
+
+export task interval_days(value)
+    value.duration.total_days

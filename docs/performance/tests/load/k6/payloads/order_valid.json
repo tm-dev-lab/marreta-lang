@@ -1,0 +1,12 @@
+{
+  "billing": {
+    "street": "Rua das Flores, 123",
+    "city": "São Paulo",
+    "zipcode": "01310-000"
+  },
+  "items": [
+    { "product_id": 1, "quantity": 2 },
+    { "product_id": 3, "quantity": 1 }
+  ],
+  "coupon": "SAVE10"
+}

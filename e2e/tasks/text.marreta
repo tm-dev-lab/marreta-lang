@@ -1,0 +1,11 @@
+# Spec 061 file-namespaces: exported tasks are reachable from other files only
+# through this file's namespace (`text.shout`, `text.wrap`). A bare cross-file call
+# does not resolve.
+
+# Private helper — file-local, never reachable as `text.decorate`, but callable by an
+# exported task in this same file (the exported task runs in its own file scope).
+task decorate(word) => "<" + word + ">"
+
+export task shout(word) => word.upper() + "!"
+
+export task wrap(word) => decorate(word)

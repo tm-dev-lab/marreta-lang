@@ -1,0 +1,16 @@
+scenario "reads item through db mock"
+    given db.items.find(42) returns {
+        id: 42,
+        name: "scenario-db-item",
+        active: true
+    }
+
+    when GET "/db/items/42"
+
+    then status 200
+    then response is {
+        body: {
+            id: 42,
+            name: "scenario-db-item"
+        }
+    }

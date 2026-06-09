@@ -1,0 +1,26 @@
+auth api_key e2e_key {
+    header: "x-api-key"
+    secret_hash: env.MARRETA_API_KEY_HASH
+    principal: "e2e"
+}
+
+# jwt with an HMAC secret: no JWKS or network. Validated live only via scenario
+# mocks (minting an HS256 token in the shell battery is out of scope, see spec 055).
+auth jwt e2e_jwt {
+    issuer: "https://e2e.local/issuer"
+    audience: "marreta-e2e"
+    secret: env.MARRETA_JWT_SECRET
+    algorithm: "HS256"
+}
+
+# api_key: validated live by the battery (header present / forbidden / missing).
+route GET "/auth/apikey"
+    require auth e2e_key
+    allow auth.user.id == "e2e"
+
+    reply 200, { ok: true, principal: auth.user.id }
+
+route GET "/auth/jwt"
+    require auth e2e_jwt
+
+    reply 200, { ok: true, subject: auth.subject }

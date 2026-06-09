@@ -1,0 +1,9 @@
+{
+  "billing": {
+    "street": "Rua das Flores, 123",
+    "zipcode": "01310-000"
+  },
+  "items": [
+    { "product_id": 1, "quantity": 2 }
+  ]
+}

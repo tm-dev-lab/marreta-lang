@@ -1,0 +1,283 @@
+# -- Section 30 -- HTTP Client module (v0.10) ----------------------------------
+#
+# Strategy: one set of routes acts as the "external API"; another set calls
+# them via http_client.*. Fully self-referencing — no external dependencies.
+#
+# Covers (from 015_HTTP_CLIENT.md):
+#   - http_client.get/post/put/patch/delete
+#   - named params: headers:, query:, timeout:
+#   - response envelope: .status, .body, .headers
+#   - 4xx/5xx are not errors — developer guards with require
+#   - rescue on connection failure (invalid URL)
+#   - pipeline input: payload >> http_client.post/put/patch(url)
+#   - pipeline input for GET: map >> http_client.get(url) (query params)
+#   - pipeline output: response.body >> cache.set(...)
+#   - pipeline chain: http_client.get >> map >> reply
+#   - fire-and-forget
+#   - match on response.status
+#   - propagate upstream status/body
+#   - multi-step cross-module pipeline: GET → body → cache
+# ------------------------------------------------------------------------------
+
+# ── "External API" stubs — these simulate upstream services ───────────────────
+
+route GET "/stub/user/:id"
+    reply 200, { id: id, name: "Alice", email: "alice@example.com" }
+
+route POST "/stub/orders"
+    reply 201, { order_id: "ord-123", status: "created" }
+
+route PUT "/stub/items/:id"
+    reply 200, { id: id, updated: true }
+
+route PATCH "/stub/items/:id"
+    reply 200, { id: id, patched: true }
+
+route DELETE "/stub/items/:id"
+    reply 200, { id: id, deleted: true }
+
+route GET "/stub/search" take query
+    q = query.q or "none"
+    limit = query.limit or "10"
+    reply 200, { results: [], q: q, limit: limit }
+
+route GET "/stub/echo-headers" take headers
+    token = headers["xtoken"] or "missing"
+    reply 200, { received_key: token }
+
+route GET "/stub/not-found"
+    reply 404, { error: "not found" }
+
+route GET "/stub/server-error"
+    reply 500, { error: "internal server error" }
+
+route POST "/stub/webhook" take payload
+    reply 202, { accepted: true }
+
+route GET "/stub/products"
+    reply 200, [
+        { id: 1, name: "Anvil",   price: 100 },
+        { id: 2, name: "Hammer",  price: 40  },
+        { id: 3, name: "Wrench",  price: 25  }
+    ]
+
+route GET "/stub/status/200"
+    reply 200, { code: 200, message: "ok" }
+
+route GET "/stub/status/404"
+    reply 404, { code: 404, message: "not_found" }
+
+route GET "/stub/status/500"
+    reply 500, { code: 500, message: "server_error" }
+
+route GET "/stub/time-payload"
+    reply 200, {
+        created_at: "2026-04-27T13:10:45Z",
+        billing_date: "2026-04-27",
+        opens_at: "09:30:00",
+        sla: "PT5400S",
+        business_window: {
+            start: "2026-04-27",
+            end: "2026-04-30"
+        }
+    }
+
+route GET "/stub/contract-types"
+    reply 200, {
+        status: "paid",
+        amount: "88.880",
+        upstream_extra: "ignored"
+    }
+
+# ── 1. Basic verbs ────────────────────────────────────────────────────────────
+
+route GET "/http-client/get/:id"
+    response = http_client.get("http://127.0.0.1:3737/stub/user/#{id}")
+    require response.status == 200 else fail 502, "upstream failed"
+    reply 200, response.body
+
+route POST "/http-client/post" take payload
+    response = http_client.post("http://127.0.0.1:3737/stub/orders", payload)
+    require response.status == 201 else fail 502, "order service failed"
+    reply 201, response.body
+
+route POST "/http-client/schema-contract" take payload
+    request = HttpOrderPayload { item: payload.item, quantity: payload.quantity }
+    response = http_client.post("http://127.0.0.1:3737/stub/orders", request) as HttpCreatedOrder
+    require response.status == 201 else fail 502, "order service failed"
+    reply 201 as HttpCreatedOrder, response.body
+
+route PUT "/http-client/put/:id" take payload
+    response = http_client.put("http://127.0.0.1:3737/stub/items/#{id}", payload)
+    require response.status == 200 else fail 502, "upstream failed"
+    reply 200, response.body
+
+route PATCH "/http-client/patch/:id" take payload
+    response = http_client.patch("http://127.0.0.1:3737/stub/items/#{id}", payload)
+    require response.status == 200 else fail 502, "upstream failed"
+    reply 200, response.body
+
+route DELETE "/http-client/delete/:id"
+    response = http_client.delete("http://127.0.0.1:3737/stub/items/#{id}")
+    require response.status == 200 else fail 502, "upstream failed"
+    reply 200, response.body
+
+# ── 2. Named params ───────────────────────────────────────────────────────────
+
+route GET "/http-client/with-query"
+    response = http_client.get("http://127.0.0.1:3737/stub/search",
+        query: { q: "marreta", limit: 5 })
+    require response.status == 200 else fail 502, "upstream failed"
+    reply 200, response.body
+
+route GET "/http-client/with-headers"
+    response = http_client.get("http://127.0.0.1:3737/stub/echo-headers",
+        headers: { xtoken: "secret-123" })
+    require response.status == 200 else fail 502, "upstream failed"
+    reply 200, response.body
+
+# timeout: named param — just verifies the call succeeds with a timeout specified
+route GET "/http-client/with-timeout"
+    response = http_client.get("http://127.0.0.1:3737/stub/user/1", timeout: 5000)
+    require response.status == 200 else fail 502, "upstream failed"
+    reply 200, { ok: true }
+
+# ── 3. Response envelope ──────────────────────────────────────────────────────
+
+# .status field
+route GET "/http-client/status-envelope"
+    response = http_client.get("http://127.0.0.1:3737/stub/not-found")
+    reply 200, { status: response.status, body: response.body }
+
+# .headers field — content-type is always present in JSON responses
+route GET "/http-client/response-headers"
+    response = http_client.get("http://127.0.0.1:3737/stub/user/1")
+    has_ct = response.headers.has("content-type")
+    reply 200, { has_content_type: has_ct }
+
+# ── 4. 4xx/5xx are not errors ─────────────────────────────────────────────────
+
+route GET "/http-client/non-2xx-no-error"
+    response = http_client.get("http://127.0.0.1:3737/stub/server-error")
+    reply 200, { status: response.status }
+
+# match on response.status — branch by code
+route GET "/http-client/match-200"
+    response = http_client.get("http://127.0.0.1:3737/stub/status/200")
+    label = match response.status
+        200 -> "ok"
+        fallback -> "other"
+    reply 200, { status: response.status, label: label }
+
+route GET "/http-client/match-404"
+    response = http_client.get("http://127.0.0.1:3737/stub/status/404")
+    label = match response.status
+        200 -> "ok"
+        404 -> "not_found"
+        fallback -> "other"
+    reply 200, { status: response.status, label: label }
+
+route GET "/http-client/match-500"
+    response = http_client.get("http://127.0.0.1:3737/stub/status/500")
+    label = match response.status
+        200 -> "ok"
+        500 -> "server_error"
+        fallback -> "other"
+    reply 200, { status: response.status, label: label }
+
+route GET "/http-client/time-payload"
+    response = http_client.get("http://127.0.0.1:3737/stub/time-payload")
+    require response.status == 200 else fail 502, "upstream failed"
+    summary = core.inspect_time_payload(response.body)
+    reply 200, summary
+
+route GET "/http-client/contract-types"
+    response = http_client.get("http://127.0.0.1:3737/stub/contract-types") as ContractTypesPayload
+    require response.status == 200 else fail 502, "upstream failed"
+    reply 200 as ContractTypesPayload, {
+        status: response.body.status,
+        amount: response.body.amount.round(2),
+        ignored: "stripped"
+    }
+
+route GET "/http-client/math-query"
+    limit = math.clamp(25, min: 1, max: 10)
+    response = { q: "marreta", limit: limit } >> http_client.get("http://127.0.0.1:3737/stub/search")
+    require response.status == 200 else fail 502, "upstream failed"
+    reply 200, {
+        limit: response.body.limit,
+        bounded_limit: limit
+    }
+
+# propagate upstream error — guard fails → raises with upstream status
+route GET "/http-client/propagate-error"
+    response = http_client.get("http://127.0.0.1:3737/stub/server-error")
+    require response.status == 200 else fail 500, "upstream error"
+    reply 200, response.body
+
+# ── 5. Rescue on connection failure ───────────────────────────────────────────
+
+route GET "/http-client/rescue-fallback"
+    result = http_client.get("http://127.0.0.1:1/unreachable") rescue { ok: false, fallback: true }
+    reply 200, result
+
+# ── 6. Fire-and-forget ────────────────────────────────────────────────────────
+
+route POST "/http-client/fire-and-forget" take payload
+    http_client.post("http://127.0.0.1:3737/stub/webhook", payload)
+    reply 202, { dispatched: true }
+
+# ── 7. Pipeline input ─────────────────────────────────────────────────────────
+
+# POST pipeline input: payload >> http_client.post(url)
+route POST "/http-client/pipeline-post" take payload
+    response = payload >> http_client.post("http://127.0.0.1:3737/stub/orders")
+    reply 201, response.body
+
+# PUT pipeline input: payload >> http_client.put(url)
+route PUT "/http-client/pipeline-put/:id" take payload
+    response = payload >> http_client.put("http://127.0.0.1:3737/stub/items/#{id}")
+    reply 200, response.body
+
+# PATCH pipeline input: payload >> http_client.patch(url)
+route PATCH "/http-client/pipeline-patch/:id" take payload
+    response = payload >> http_client.patch("http://127.0.0.1:3737/stub/items/#{id}")
+    reply 200, response.body
+
+# GET pipeline input: map >> http_client.get(url) (map becomes query params)
+route GET "/http-client/pipeline-query"
+    response = { q: "lang", limit: 3 } >> http_client.get("http://127.0.0.1:3737/stub/search")
+    require response.status == 200 else fail 502, "upstream failed"
+    reply 200, response.body
+
+# ── 8. Pipeline output ────────────────────────────────────────────────────────
+
+# response.body >> cache.set — store upstream result in cache
+route GET "/http-client/pipeline-to-cache/:id"
+    response = http_client.get("http://127.0.0.1:3737/stub/user/#{id}")
+    require response.status == 200 else fail 502, "upstream failed"
+    response.body >> cache.set("http_ft:user:#{id}", ttl: 60)
+    cached = cache.get("http_ft:user:#{id}")
+    reply 200, { cached: cached }
+
+# read-through: cache miss → http_client → cache.set → return
+# Second call hits cache; both calls return the same user name
+route GET "/http-client/read-through/:id"
+    response = http_client.get("http://127.0.0.1:3737/stub/user/#{id}")
+    require response.status == 200 else fail 502, "upstream failed"
+    response.body >> cache.set("http_ft:rt:#{id}", ttl: 60)
+    cached = cache.get("http_ft:rt:#{id}")
+    reply 200, { from_cache: cached.name }
+
+# response.body >> map transformation — pass-through all products
+route GET "/http-client/pipeline-map"
+    response = http_client.get("http://127.0.0.1:3737/stub/products")
+    require response.status == 200 else fail 502, "products service failed"
+    reply 200, response.body
+
+# multi-step chain: GET → filter cheap items → reply count
+route GET "/http-client/chain-multi"
+    response = http_client.get("http://127.0.0.1:3737/stub/products")
+    require response.status == 200 else fail 502, "products service failed"
+    items = response.body.length()
+    reply 200, { count: items }

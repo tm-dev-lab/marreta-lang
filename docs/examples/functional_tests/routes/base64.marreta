@@ -1,0 +1,93 @@
+# -- Section 32 -- Base64 namespace (v0.14) -----------------------------------
+#
+# Covers 031_BASE64_NAMESPACE.md:
+#   - base64.encode / base64.decode
+#   - standard Base64 by default
+#   - url_safe: true variant
+#   - permissive decode without padding
+#   - explicit runtime failure on malformed input
+#   - integration with headers, fs, cache, queue, and http_client
+# -------------------------------------------------------------------------------
+
+route GET "/stub/base64-token"
+    reply 200, {
+        token: base64.encode("upstream:secret"),
+        url_token: base64.encode("???", url_safe: true)
+    }
+
+route GET "/base64/encode-basic"
+    token = "client:secret" >> base64.encode()
+    reply 200, {
+        token: token,
+        authorization: "Basic #{token}"
+    }
+
+route GET "/base64/decode-header" take headers
+    token = headers.xbasictoken or ""
+    decoded = token >> base64.decode()
+    reply 200, {
+        decoded: decoded
+    }
+
+route POST "/base64/url-safe" take payload
+    encoded = payload.text >> base64.encode(url_safe: true)
+    decoded = encoded >> base64.decode(url_safe: true)
+    reply 200, {
+        encoded: encoded,
+        decoded: decoded
+    }
+
+route POST "/base64/decode-no-padding" take payload
+    decoded = payload.token >> base64.decode()
+    reply 200, {
+        decoded: decoded
+    }
+
+route POST "/base64/decode-rescue" take payload
+    result = payload.token >> base64.decode() rescue {
+        code: error.code,
+        error: error.message
+    }
+    reply 200, result
+
+route POST "/base64/fs-roundtrip" take payload
+    encoded = payload.text >> base64.encode() >> fs.write(payload.path)
+    decoded = payload.path >> fs.read() >> base64.decode()
+    reply 200, {
+        encoded: encoded,
+        decoded: decoded
+    }
+
+route POST "/base64/cache-roundtrip" take payload
+    payload.text >> base64.encode(url_safe: true) >> cache.set("ft:base64:cache", ttl: 60)
+    decoded = cache.get("ft:base64:cache") >> base64.decode(url_safe: true)
+    reply 200, {
+        decoded: decoded
+    }
+
+route POST "/base64/queue-push" take payload
+    encoded = payload.text >> base64.encode(url_safe: true)
+    queue.push "ft.base64", encoded
+    reply 202, {
+        queued: true,
+        encoded: encoded
+    }
+
+route GET "/base64/queue-last"
+    reply 200, cache.get("ft:base64:last")
+
+route GET "/base64/http-client-roundtrip"
+    response = http_client.get("http://127.0.0.1:3737/stub/base64-token")
+    require response.status == 200 else fail 502, "upstream failed"
+
+    decoded = response.body.token >> base64.decode()
+    url_decoded = response.body.url_token >> base64.decode(url_safe: true)
+
+    reply 200, {
+        decoded: decoded,
+        url_decoded: url_decoded
+    }
+
+on queue "ft.base64" take msg
+    decoded = msg >> base64.decode(url_safe: true)
+    cache.set("ft:base64:last", { decoded: decoded }, ttl: 60)

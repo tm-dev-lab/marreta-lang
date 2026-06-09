@@ -1,0 +1,11 @@
+schema User
+    db: users
+
+    id: integer
+    orders: list of Order
+
+schema Order
+    db: orders
+
+    id: integer
+    total: float

@@ -1,0 +1,11 @@
+scenario "decodes base64 token from request headers"
+    when GET "/base64/decode-header" and headers {
+        xbasictoken: "Y2xpZW50OnNlY3JldA=="
+    }
+
+    then status 200
+    then response is {
+        body: {
+            decoded: "client:secret"
+        }
+    }

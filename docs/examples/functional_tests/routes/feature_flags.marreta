@@ -1,0 +1,15 @@
+# Feature flags are process-wide booleans loaded from MARRETA_FEATURE_* env vars.
+
+route GET "/feature-flags/enabled"
+    require feature.enabled("functional_flag") else fail 404, "feature disabled"
+
+    reply 200, {
+        feature: "functional_flag",
+        enabled: true
+    }
+
+route GET "/feature-flags/missing"
+    reply 200, {
+        feature: "missing_flag",
+        enabled: feature.enabled("missing_flag")
+    }

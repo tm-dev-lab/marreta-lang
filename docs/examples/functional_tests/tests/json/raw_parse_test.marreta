@@ -1,0 +1,15 @@
+scenario "parses raw json body through json namespace"
+    when POST "/json/parse" with {
+        customer: { name: "Scenario Ana" },
+        items: [1, 2, 3],
+        active: true
+    }
+
+    then status 200
+    then response is {
+        body: {
+            customer: "Scenario Ana",
+            item_count: 3,
+            active: true
+        }
+    }

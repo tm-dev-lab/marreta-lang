@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <!-- Generic file: default icon so the theme is not destructive to other files. -->
+  <path d="M8 3h11l5 5v21a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" fill="#C7C7CC"/>
+  <path d="M19 3l5 5h-5z" fill="#9A9AA0"/>
+</svg>

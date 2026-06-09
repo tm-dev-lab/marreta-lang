@@ -1,0 +1,49 @@
+project_name = "Marreta Smoke"
+
+auth api_key internal_auth
+
+schema QueueOrder
+    order_id: integer
+    total: float
+
+task normalize payload as QueueOrder
+    result = {
+        public_id: uuid.v4(),
+        record_id: uuid.v7(),
+        rounded: math.round(payload.total, places: 2),
+        encoded: base64.encode("client:secret"),
+        pretty: json.pretty({ ok: true }),
+        now: time.now()
+    }
+
+    log.info(result)
+    result
+
+route POST "/orders" take payload as QueueOrder
+    normalized = payload >> normalize
+    normalized >> cache.set("orders:last", ttl: 60)
+    queue.push "orders.created", normalized
+    reply 201, normalized
+
+route GET "/orders/:id"
+    reply 200, db.orders.find(id)
+
+route GET "/docs"
+    reply 200, doc.orders.find("abc")
+
+scenario "creates an order"
+    when POST "/orders" with {
+        order_id: 42,
+        total: 19.95
+    }
+
+    then status 201
+    then response is {
+        body: {
+            public_id: anything,
+            record_id: anything
+        }
+    }
+
+on queue "orders.created" take event as QueueOrder
+    log.info(event)

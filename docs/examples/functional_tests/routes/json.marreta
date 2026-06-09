@@ -1,0 +1,96 @@
+# -- Section 31 -- JSON namespace (v0.13) -------------------------------------
+#
+# Covers 030_JSON_NAMESPACE.md:
+#   - json.parse
+#   - json.stringify
+#   - json.pretty
+#   - native navigation after parse
+#   - insertion-order stability
+#   - temporal serialization
+#   - explicit runtime failure on invalid JSON
+#   - integration with fs, cache, queue, http_client, and raw request bodies
+# ------------------------------------------------------------------------------
+
+route POST "/json/parse" take raw
+    parsed = raw >> json.parse()
+    reply 200, {
+        customer: parsed.customer.name,
+        item_count: parsed.items.length(),
+        active: parsed.active
+    }
+
+route POST "/json/parse-rescue" take raw
+    result = raw >> json.parse() rescue {
+        code: error.code,
+        error: error.message
+    }
+    reply 200, result
+
+route GET "/json/stringify"
+    compact = json.stringify({
+        id: 1,
+        name: "Ana",
+        created_at: time.instant("2026-04-27T13:10:45Z"),
+        billing_date: time.date("2026-04-27"),
+        opens_at: time.at("09:30:00"),
+        sla: time.minutes(90),
+        window: time.interval(
+            time.date("2026-04-27"),
+            time.date("2026-04-30")
+        )
+    })
+
+    pretty = json.pretty({
+        id: 1,
+        name: "Ana"
+    })
+
+    reply 200, {
+        compact: compact,
+        pretty: pretty
+    }
+
+route POST "/json/fs-roundtrip" take payload
+    text = payload.document >> json.pretty()
+    text >> fs.write(payload.path)
+    reparsed = payload.path >> fs.read() >> json.parse()
+
+    reply 200, {
+        text: text,
+        id: reparsed.id,
+        name: reparsed.name,
+        active: reparsed.active
+    }
+
+route POST "/json/cache-roundtrip" take payload
+    payload.document >> json.stringify() >> cache.set("ft:json:cache", ttl: 60)
+    reparsed = cache.get("ft:json:cache") >> json.parse()
+    reply 200, reparsed
+
+route GET "/json/http-client-roundtrip"
+    response = http_client.get("http://127.0.0.1:3737/stub/user/42")
+    require response.status == 200 else fail 502, "upstream failed"
+
+    text = response.body >> json.stringify()
+    reparsed = text >> json.parse()
+
+    reply 200, {
+        id: reparsed.id,
+        name: reparsed.name,
+        email: reparsed.email
+    }
+
+route POST "/json/queue-push" take payload
+    text = payload.document >> json.stringify()
+    queue.push "ft.json", text
+    reply 202, {
+        queued: true,
+        text: text
+    }
+
+route GET "/json/queue-last"
+    reply 200, cache.get("ft:json:last")
+
+on queue "ft.json" take msg
+    parsed = msg >> json.parse()
+    cache.set("ft:json:last", parsed, ttl: 60)

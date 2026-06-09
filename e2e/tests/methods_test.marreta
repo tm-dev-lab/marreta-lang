@@ -1,0 +1,53 @@
+scenario "string methods"
+    when GET "/methods/string"
+    then status 200
+    then response is { body: {
+        length: 18,
+        trim: "Hello, Marreta",
+        upper: "  HELLO, MARRETA  ",
+        index_of: 2,
+        replace: "a_b_c",
+        split: ["a", "b", "c"]
+    } }
+
+scenario "list methods"
+    when GET "/methods/list"
+    then status 200
+    then response is { body: {
+        length: 4,
+        first: 3,
+        last: 1,
+        sum: 10,
+        median: 3.0,
+        sorted: [1, 1, 2, 3],
+        unique: [3, 1, 2],
+        join: "a-b-c",
+        slice: [20, 30],
+        zipped: [["a", 1], ["b", 2]],
+        is_empty: true
+    } }
+
+scenario "map methods"
+    when GET "/methods/map"
+    then status 200
+    then response is { body: {
+        keys: ["a", "b"],
+        size: 2,
+        has: true,
+        merged: { a: 1, b: 2, c: 3 }
+    } }
+
+scenario "integer methods"
+    when GET "/methods/integer"
+    then status 200
+    then response is { body: { abs: 7, max: 9, min: 3, to_string: "3" } }
+
+scenario "float methods"
+    when GET "/methods/float"
+    then status 200
+    then response is { body: { abs: 2.5, ceil: 4.0, floor: 3.0, round: 3.8 } }
+
+scenario "decimal methods"
+    when POST "/methods/decimal" with { amount: "12.347" }
+    then status 200
+    then response is { body: { round: "12.35", scale: 3, to_integer: 12, trunc: "12" } }

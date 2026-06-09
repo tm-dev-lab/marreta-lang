@@ -1,0 +1,12 @@
+schema User
+    db: users
+
+    id: integer
+    purchases: list of Order
+
+schema Order
+    db: orders
+
+    id: integer
+    customer: User
+    billed_by: User

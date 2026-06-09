@@ -1,0 +1,246 @@
+# ── Section 28 — Queue module (v0.8) ─────────────────────────────────────────
+#
+# Covers all queue features from 013_QUEUE.md:
+#   - queue.push (point-to-point, no schema)
+#   - queue.push with as schema (payload filtered before publishing)
+#   - topic.publish (pub/sub topic, no schema)
+#   - topic.publish with as schema (payload filtered before publishing)
+#   - on queue (free-form consumer)
+#   - on queue with as schema (validated consumer — rejects invalid payload)
+#   - on topic (exact topic subscriber)
+#   - on topic with as schema (validated topic consumer — rejects invalid payload)
+#   - nack (explicit discard without requeue)
+#   - nack requeue (explicit reject and put back on queue)
+#
+# Every consumer has a corresponding producer route so the full flow is testable.
+# Consumer behaviour is async — tests verify the HTTP producer response (202/422).
+#
+# Requires: MARRETA_QUEUE_PROVIDER, MARRETA_QUEUE_HOST, MARRETA_QUEUE_PORT, MARRETA_QUEUE_USER, and optional MARRETA_QUEUE_PASSWORD (RabbitMQ)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Point-to-point (queue.push) ───────────────────────────────────────────────
+
+# Push without schema — full payload forwarded as-is
+route POST "/queue/push" take payload
+    queue.push "ft.orders", payload
+    reply 202, { queued: true, order_id: payload.order_id }
+
+# Push with schema — only declared fields reach the broker (secret stripped)
+route POST "/queue/push-schema" take payload as QueueOrder
+    queue.push "ft.typed" as QueueOrder, payload
+    reply 202, { queued: true, order_id: payload.order_id }
+
+route POST "/queue/push-constructor"
+    order = QueueOrder { order_id: 41, customer: "Constructor Queue", total: 12.5 }
+    queue.push "ft.typed" as QueueOrder, order
+    reply 202, { queued: true, order_id: order.order_id }
+
+# Push invalid payload to typed queue — consumer schema mismatch → nack (no requeue), server stays up
+route POST "/queue/push-typed-invalid" take payload
+    queue.push "ft.typed", payload
+    reply 202, { queued: true }
+
+# Push to a queue whose consumer always nacks (discard demo)
+route POST "/queue/push-reject" take payload
+    queue.push "ft.rejected", payload
+    reply 202, { queued: true }
+
+# Push to a queue whose consumer always nacks with requeue (retry demo)
+route POST "/queue/push-requeue" take payload
+    cache.delete("ft:requeue:attempts")
+    queue.push "ft.requeue", payload
+    reply 202, { queued: true }
+
+# Push via pipeline — queue.push returns the published value, enabling chaining
+route POST "/queue/push-pipeline" take payload
+    result = payload >> queue.push "ft.orders"
+    reply 202, result
+
+# Publish via pipeline — same for topics
+route POST "/queue/publish-pipeline" take payload
+    result = payload >> topic.publish "ft.order.created"
+    reply 202, result
+
+route POST "/queue/time-push" take payload as TimePayload
+    queue.push "ft.time" as TimePayload, payload
+    reply 202, { queued: true, billing_date: payload.billing_date }
+
+route GET "/queue/time-last"
+    reply 200, cache.get("ft:time:last")
+
+route POST "/queue/contract-types-push" take payload as ContractTypesPayload
+    queue.push "ft.contract.types" as ContractTypesPayload, payload
+    reply 202, { queued: true, status: payload.status }
+
+route GET "/queue/contract-types-last"
+    reply 200, cache.get("ft:contract-types:last")
+
+route POST "/queue/contract-types-publish" take payload as ContractTypesPayload
+    topic.publish "ft.contract.types.updated" as ContractTypesPayload, payload
+    reply 202, { published: true, status: payload.status }
+
+route GET "/queue/contract-types-topic-last"
+    reply 200, cache.get("ft:contract-types-topic:last")
+
+route POST "/queue/math-push" take payload as QueueOrder
+    queue.push "ft.math", {
+        order_id: payload.order_id,
+        rounded_total: math.round(payload.total, places: 2),
+        bounded_total: math.clamp(payload.total, min: 0, max: 9999),
+        customer_size: math.max(payload.customer.length(), 1)
+    }
+    reply 202, { queued: true, order_id: payload.order_id }
+
+route GET "/queue/math-last"
+    reply 200, cache.get("ft:math:last")
+
+route GET "/queue/typed-last"
+    reply 200, { order_id: cache.get("ft:typed:last") }
+
+route GET "/queue/topic-updated-last"
+    reply 200, { order_id: cache.get("ft:order:updated:last") }
+
+route POST "/queue/async-trace-push" take payload
+    queue.push "ft.async.trace", payload
+    reply 202, { queued: true, order_id: payload.order_id }
+
+# ── Pub/sub (topic.publish) ───────────────────────────────────────────────────
+
+# Publish invalid payload to typed topic — consumer schema mismatch → nack (no requeue), server stays up
+route POST "/queue/publish-topic-invalid" take payload
+    topic.publish "ft.order.updated", payload
+    reply 202, { published: true }
+
+# Publish without schema — full payload to topic
+route POST "/queue/publish" take payload
+    topic.publish "ft.order.created", payload
+    reply 202, { published: true }
+
+# Publish with schema — filtered payload to topic (consumed by typed topic consumer)
+route POST "/queue/publish-schema" take payload as QueueOrder
+    topic.publish "ft.order.updated" as QueueOrder, payload
+    reply 202, { published: true, order_id: payload.order_id }
+
+route POST "/queue/publish-constructor"
+    order = QueueOrder { order_id: 42, customer: "Constructor Topic", total: 45.6 }
+    topic.publish "ft.order.updated" as QueueOrder, order
+    reply 202, { published: true, order_id: order.order_id }
+
+route POST "/queue/async-trace-publish" take payload
+    topic.publish "ft.async.trace.created", payload
+    reply 202, { published: true, order_id: payload.order_id }
+
+# ── Consumers ─────────────────────────────────────────────────────────────────
+
+# Consumes from ft.orders — free-form, any JSON accepted, implicit ack on success
+on queue "ft.orders" take msg
+    cache.set("ft:orders:last", msg.order_id, ttl: 60)
+
+# Consumes from ft.typed — validates against queue_order schema
+# Invalid messages are nacked (no requeue) automatically
+on queue "ft.typed" take order as QueueOrder
+    cache.set("ft:typed:last", order.order_id, ttl: 60)
+
+# Guarded discard — nack only fires when condition is falsy (spec 013 §require-else-nack)
+on queue "ft.rejected" take msg
+    require false else nack
+
+# Guarded requeue — first delivery requeues, second delivery acks.
+on queue "ft.requeue" take msg
+    attempts = cache.incr("ft:requeue:attempts", ttl: 60)
+    require attempts > 1 else nack requeue
+
+on queue "ft.time" take msg
+    summary = core.inspect_time_payload(msg)
+    cache.set("ft:time:last", {
+        created_unix: summary.created_unix,
+        billing_date: msg.billing_date,
+        opening_hour: summary.opening_hour,
+        sla_hours: summary.sla_hours,
+        window_days: summary.window_days
+    }, ttl: 60)
+
+on queue "ft.contract.types" take msg as ContractTypesPayload
+    cache.set("ft:contract-types:last", {
+        status: msg.status,
+        amount: msg.amount.round(2)
+    }, ttl: 60)
+
+on queue "ft.math" take msg
+    cache.set("ft:math:last", msg, ttl: 60)
+
+on queue "ft.async.trace" take msg
+    log.info({
+        event: "async.trace.consumer",
+        order_id: msg.order_id
+    })
+
+    http_client.get("http://127.0.0.1:3737/trace-context/stub/headers")
+
+    log.info({
+        event: "async.trace.consumer.completed",
+        order_id: msg.order_id
+    })
+
+# Consumes exact topic ft.order.created — free-form
+on topic "ft.order.created" take event
+    cache.set("ft:order:created:last", event.order_id, ttl: 60)
+
+# Consumes exact topic ft.order.updated — validates against queue_order schema
+# Invalid messages are nacked (no requeue) automatically
+on topic "ft.order.updated" take event as QueueOrder
+    cache.set("ft:order:updated:last", event.order_id, ttl: 60)
+
+on topic "ft.contract.types.updated" take event as ContractTypesPayload
+    cache.set("ft:contract-types-topic:last", {
+        status: event.status,
+        amount: event.amount.round(2)
+    }, ttl: 60)
+
+on topic "ft.async.trace.created" take event
+    log.info({
+        event: "async.trace.subscriber_a",
+        order_id: event.order_id
+    })
+
+on topic "ft.async.trace.created" take event
+    log.info({
+        event: "async.trace.subscriber_b",
+        order_id: event.order_id
+    })
+
+# ── Spec 060 certification: topic fan-out vs queue point-to-point ──────────────
+# Two consumers on the SAME topic must EACH receive every message (pub/sub fan-out),
+# so N publishes => 2N receipts. Two consumers on the SAME queue compete, so each
+# message is delivered to exactly one of them => N pushes => N receipts.
+
+on topic "ft.fanout" take event
+    cache.incr("ft:fanout:count")
+
+on topic "ft.fanout" take event
+    cache.incr("ft:fanout:count")
+
+on queue "ft.compete" take job
+    cache.incr("ft:compete:count")
+
+on queue "ft.compete" take job
+    cache.incr("ft:compete:count")
+
+route POST "/fanout/publish-topic" take payload
+    topic.publish "ft.fanout", payload
+    reply 202, { published: true }
+
+route POST "/fanout/push-queue" take payload
+    queue.push "ft.compete", payload
+    reply 202, { queued: true }
+
+route GET "/fanout/topic-count"
+    reply 200, { count: cache.get("ft:fanout:count") }
+
+route GET "/fanout/queue-count"
+    reply 200, { count: cache.get("ft:compete:count") }
+
+route POST "/fanout/reset"
+    cache.delete("ft:fanout:count")
+    cache.delete("ft:compete:count")
+    reply 200, { reset: true }

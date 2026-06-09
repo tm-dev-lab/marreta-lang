@@ -1,0 +1,40 @@
+route GET "/doc/orders"
+    orders = doc.orders.find_all()
+    reply 200, { items: orders }
+
+route GET "/doc/orders/:id"
+    order = doc.orders.find(params.id)
+    require order else fail 404, "order not found"
+    reply 200, order
+
+route POST "/doc/orders" take payload as OrderPayload
+    require payload.billing else fail 400, "billing address is required"
+    require payload.items else fail 400, "items are required"
+
+    coupon_code = payload.coupon or "NONE"
+    discount_rate = pricing.get_coupon_rate(payload)
+    item_count = payload.items.length()
+
+    order = doc.orders.save({
+        billing_city: payload.billing.city,
+        billing_street: payload.billing.street,
+        billing_zipcode: payload.billing.zipcode,
+        coupon: coupon_code,
+        discount_rate: discount_rate,
+        item_count: item_count,
+        status: "pending"
+    })
+
+    reply 201 as OrderCreatedDoc, {
+        order_created: true,
+        order_id: order._id,
+        item_count: item_count,
+        city: payload.billing.city,
+        coupon: coupon_code,
+        discount_rate: discount_rate
+    }
+
+route DELETE "/doc/orders/:id"
+    deleted = doc.orders.delete(params.id)
+    require deleted else fail 404, "order not found"
+    reply 200, { deleted: true }

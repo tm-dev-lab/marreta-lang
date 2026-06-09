@@ -1,0 +1,65 @@
+# -- Section 31 -- Filesystem module (v0.11) ----------------------------------
+#
+# Covers the first-cut native fs namespace from 029_FILESYSTEM_NAMESPACE.md:
+#   - fs.read / fs.write / fs.append
+#   - fs.exists / fs.delete
+#   - UTF-8 text semantics
+#   - pass-through pipeline behavior
+#   - explicit if/else flow with filesystem state
+#
+# Scope is intentionally small and backend-first. No directory traversal, no
+# globbing, no shell execution, and no implicit mkdir.
+# ------------------------------------------------------------------------------
+
+route POST "/fs/write-read" take payload
+    written = fs.write(payload.path, payload.content)
+    appended = fs.append(payload.path, payload.suffix)
+    reply 200, {
+        written: written,
+        appended: appended,
+        exists: fs.exists(payload.path),
+        content: fs.read(payload.path)
+    }
+
+route POST "/fs/pipeline" take payload
+    persisted = payload.content >> fs.write(payload.path)
+    loaded = payload.path >> fs.read()
+
+    reply 200, {
+        persisted: persisted,
+        loaded: loaded
+    }
+
+route POST "/fs/read" take payload
+    reply 200, {
+        content: fs.read(payload.path)
+    }
+
+route POST "/fs/read-rescue" take payload
+    result = fs.read(payload.path) rescue {
+        code: error.code,
+        error: error.message
+    }
+    reply 200, result
+
+route POST "/fs/write-only" take payload
+    reply 200, {
+        written: fs.write(payload.path, payload.content)
+    }
+
+route POST "/fs/status" take payload
+    status = if fs.exists(payload.path)
+        "present"
+    else
+        "missing"
+
+    reply 200, { status: status }
+
+route POST "/fs/delete" take payload
+    deleted = payload.path >> fs.delete()
+    still_exists = fs.exists(payload.path)
+
+    reply 200, {
+        deleted: deleted,
+        still_exists: still_exists
+    }

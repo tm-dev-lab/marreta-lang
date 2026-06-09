@@ -1,0 +1,49 @@
+# inline task (single arg)
+task square(n) => n * n
+
+# block task: multi-arg, multi-step, implicit return (last expression)
+task taxed(price, qty)
+    subtotal = price * qty
+    tax = subtotal * 0.1
+    subtotal + tax
+
+# inline task composing another task
+task net_of(price, qty) => taxed(price, qty) - 5
+
+# recursive task (base case + reduced args)
+task fib(n)
+    result = if n < 2
+        n
+    else
+        fib(n - 1) + fib(n - 2)
+
+    result
+
+route GET "/tasks/inline/:n"
+    reply 200, { square: square(params.n) }
+
+route GET "/tasks/block"
+    reply 200, { taxed: taxed(100, 2), net: net_of(100, 2) }
+
+route GET "/tasks/recursion/:n"
+    reply 200, { fib: fib(params.n) }
+
+# inner task: defined inside the route body and used there
+route GET "/tasks/inner/:n"
+    task bonus(base)
+        extra = base * 2
+        base + extra
+
+    reply 200, { bonus: bonus(params.n) }
+
+# Spec 061 file-namespaces: cross-file exported tasks via their file-namespace.
+#   - text.shout : a direct namespaced call
+#   - text.wrap  : a namespaced call into a private same-file helper (decorate)
+#   - >> text.shout : a namespaced task as a pipeline stage
+route GET "/tasks/namespaced/:word"
+    piped = params.word >> text.shout
+    reply 200, {
+        shout: text.shout(params.word),
+        wrapped: text.wrap(params.word),
+        piped: piped
+    }

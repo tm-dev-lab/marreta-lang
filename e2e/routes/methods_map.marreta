@@ -1,0 +1,11 @@
+# map methods (catalog: map.*)
+route GET "/methods/map"
+    m = { a: 1, b: 2 }
+    reply 200, {
+        keys: m.keys(),
+        values: m.values(),
+        size: m.size(),
+        has: m.has("a"),
+        deleted: m.delete("a"),
+        merged: m.merge({ c: 3 })
+    }

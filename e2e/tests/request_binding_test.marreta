@@ -1,0 +1,23 @@
+scenario "path param is bound and coerced"
+    when GET "/binding/path/42"
+    then status 200
+    then response is { body: { id: 42 } }
+
+scenario "query params fall back to defaults when absent"
+    when GET "/binding/query"
+    then status 200
+    then response is { body: { term: "none", limit: "10" } }
+
+scenario "request headers fall back when absent"
+    when GET "/binding/headers"
+    then status 200
+    then response is { body: { accept: "not-set" } }
+
+scenario "raw body is accepted"
+    when POST "/binding/raw" with { note: "hi" }
+    then status 200
+
+scenario "json body is bound"
+    when POST "/binding/json" with { value: 99 }
+    then status 200
+    then response is { body: { echoed: 99 } }

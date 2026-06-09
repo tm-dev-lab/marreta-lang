@@ -1,0 +1,847 @@
+# ═════════════════════════════════════════════════════════════════════════════
+# SECTION 1 — Types & arithmetic
+#
+# MarretaLang is dynamically typed. The basic types are:
+#   integer, float, boolean, string, list, map, null.
+# All arithmetic follows standard precedence; integer/integer yields integer.
+# ═════════════════════════════════════════════════════════════════════════════
+
+route GET "/types/arithmetic"
+    # Basic arithmetic — integer division truncates (10/3 → 3).
+    sum     = 10 + 3
+    diff    = 10 - 3
+    product = 10 * 3
+    quotient = 10 / 3
+    remainder = 10 % 3
+    reply 200, {
+        sum:       sum,
+        diff:      diff,
+        product:   product,
+        quotient:  quotient,
+        remainder: remainder
+    }
+
+route GET "/types/float"
+    # Floats are 64-bit. Mixed int+float promotes to float.
+    x = 1.5 + 2.5
+    y = 10.0 / 3.0
+    reply 200, { sum: x, division: y }
+
+route GET "/types/boolean"
+    a = true
+    b = false
+    and_result = a and b
+    or_result  = a or b
+    not_result = not a
+    reply 200, { a: a, b: b, a_and_b: and_result, a_or_b: or_result, not_a: not_result }
+
+route GET "/math/runtime"
+    reply 200, {
+        abs_int: math.abs(-5),
+        abs_float: math.abs(-5.25),
+        floor: math.floor(3.9),
+        ceil: math.ceil(3.1),
+        round_int: math.round(4.8),
+        round_places: math.round(4.876, places: 2),
+        round_places_zero: math.round(4.8, places: 0),
+        integer_places: math.round(5, places: 2),
+        min_float: math.min(10, 10.5),
+        max_float: math.max(10, 10.5),
+        clamp_int: math.clamp(120, min: 0, max: 100),
+        clamp_float: math.clamp(10, min: 0.5, max: 9.5)
+    }
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SECTION 2 — String methods
+#
+# Strings have method-call syntax: str.method(args).
+# Methods do NOT mutate — they return new values.
+# ═════════════════════════════════════════════════════════════════════════════
+
+route GET "/strings/methods"
+    s = "  Hello, World!  "
+    trimmed = s.trim()
+    reply 200, {
+        original:  s,
+        upper:     s.upper(),
+        lower:     s.lower(),
+        trimmed:   trimmed,
+        length:    trimmed.length(),
+        contains:  s.contains("World"),
+        replaced:  trimmed.replace("World", "MarretaLang")
+    }
+
+route GET "/strings/split"
+    # split() returns a list of strings. Useful for parsing CSV-like values.
+    csv = "alpha,beta,gamma,delta"
+    parts = csv.split(",")
+    reply 200, { parts: parts, count: parts.length() }
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SECTION 3 — String interpolation
+#
+# #{expression} embeds any expression into a string literal.
+# The expression is evaluated and converted to string automatically.
+# ═════════════════════════════════════════════════════════════════════════════
+
+route GET "/strings/interpolation"
+    name    = "MarretaLang"
+    version = 5
+    items   = [1, 2, 3]
+    # Interpolation resolves variable names only — evaluate expressions first.
+    item_count = items.length()
+    math_result = 2 + 2
+    reply 200, {
+        greeting: "Hello from #{name} v#{version}!",
+        count:    "List has #{item_count} items",
+        equation: "2 + 2 = #{math_result}"
+    }
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SECTION 4 — List methods
+#
+# Lists are ordered, zero-indexed collections. All methods return new values.
+# ═════════════════════════════════════════════════════════════════════════════
+
+route GET "/lists/methods"
+    nums = [3, 1, 4, 1, 5, 9]
+    reply 200, {
+        original: nums,
+        length:   nums.length(),
+        first:    nums.first(),
+        last:     nums.last(),
+        reversed: nums.reverse(),
+        pushed:   nums.push(99),
+        includes: nums.includes(4)
+    }
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SECTION 5 — Map methods
+#
+# Maps are key-value collections. Keys are always strings.
+# ═════════════════════════════════════════════════════════════════════════════
+
+route GET "/maps/methods"
+    user = { name: "Ana", age: 30, city: "Belo Horizonte" }
+    reply 200, {
+        original: user,
+        keys:     user.keys(),
+        values:   user.values(),
+        has_name: user.has("name"),
+        has_email: user.has("email")
+    }
+
+route GET "/maps/access"
+    # Nested map access with chained dot notation.
+    config = { database: { host: "localhost", port: 5432 } }
+    reply 200, {
+        host: config.database.host,
+        port: config.database.port
+    }
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SECTION 6 — Operators & logic
+#
+# Comparison operators return boolean. Logical operators are `and`, `or`, `not`.
+# `or` is also useful as a null-coalescing operator: value or default.
+# ═════════════════════════════════════════════════════════════════════════════
+
+route GET "/operators/comparison"
+    reply 200, {
+        eq:  10 == 10,
+        neq: 10 != 20,
+        gt:  10 > 5,
+        lt:  10 < 20,
+        gte: 10 >= 10,
+        lte: 10 <= 10
+    }
+
+route GET "/operators/logic"
+    reply 200, {
+        and_true:  true and true,
+        and_false: true and false,
+        or_true:   false or true,
+        not_true:  not false
+    }
+
+route GET "/operators/null_coalesce"
+    # `or` short-circuits: if the left side is truthy, the right is never evaluated.
+    # This makes it a safe null-coalescing operator.
+    present = "hello"
+    missing = null
+    reply 200, {
+        present_or: present or "default",
+        missing_or: missing or "default",
+        zero_or:    0 or "fallback"
+    }
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SECTION 7 — Conditionals
+#
+# `variable = value if condition` assigns only when the condition is truthy.
+# If the condition is false, the variable retains its previous value (or null).
+# Useful for optional fields and short guards.
+#
+# MarretaLang also supports block `if/else` as an expression. It returns the
+# last evaluated line of the matching branch, supports `else if`, and keeps
+# branch-local variables scoped to the branch.
+# ═════════════════════════════════════════════════════════════════════════════
+
+route GET "/conditional/if_suffix"
+    flag   = true
+    x      = "assigned" if flag
+    # y is never assigned because the condition is false.
+    # Accessing an unassigned variable returns null via `or`.
+    y_val  = null
+    y_val  = "skipped" if false
+    result = x or "nothing"
+    reply 200, { x: x, y_val: y_val, result: result }
+
+route GET "/conditional/if_else/:score"
+    bucket = if params.score >= 90
+        "excellent"
+    else if params.score >= 70
+        "good"
+    else
+        "needs_work"
+
+    reply 200, { score: params.score, bucket: bucket }
+
+route GET "/conditional/if_else/no_else"
+    result = if false
+        "assigned"
+
+    reply 200, { result: result }
+
+route GET "/conditional/if_else/scope"
+    branch_only = "outer"
+    value = if true
+        branch_only = "secret"
+        "visible"
+    else
+        "hidden"
+
+    reply 200, {
+        value: value,
+        branch_only: branch_only
+    }
+
+route GET "/conditional/if_else/pipeline/:kind"
+    result = if params.kind == "double"
+        5
+    else
+        7
+    >> core.double
+
+    reply 200, { kind: params.kind, result: result }
+
+route GET "/conditional/if_else/reply/:source"
+    if params.source == "cache"
+        reply 200, { source: "cache" }
+
+    reply 200, { source: "db" }
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SECTION 7.5 — Time API
+#
+# Temporal values are real runtime types, not decorated strings. Route-level
+# payload coercion and task-level schema coercion should both expose native
+# properties and behavior.
+# ═════════════════════════════════════════════════════════════════════════════
+
+route GET "/time/runtime"
+    created_at = time.instant("2026-04-27T13:10:45Z")
+    billing_date = time.date("2026-04-27")
+    opens_at = time.at("09:30:00")
+    sla = time.hours(36)
+    business_window = time.interval(
+        time.date("2026-04-27"),
+        time.date("2026-04-30")
+    )
+
+    reply 200, {
+        created_year: created_at.year,
+        created_hour: created_at.hour,
+        created_minute: created_at.minute,
+        created_second: created_at.second,
+        created_unix: created_at.unix,
+        created_date: created_at.date,
+        billing_weekday: billing_date.weekday,
+        billing_start_of_day: billing_date.start_of_day,
+        billing_end_of_day: billing_date.end_of_day,
+        opening_hour: opens_at.hour,
+        opening_on_date: opens_at.on(billing_date),
+        sla_hours: sla.total_hours,
+        window_days: business_window.duration.total_days,
+        window_start: business_window.start,
+        window_end: business_window.end,
+        contains_date: time.contains(business_window, time.date("2026-04-28")),
+        overlaps_window: time.overlaps(
+            business_window,
+            time.interval(time.date("2026-04-29"), time.date("2026-05-02"))
+        ),
+        parsed_instant: time.parse("2026-04-27T13:10:45Z"),
+        parsed_date: time.parse("2026-04-27"),
+        parsed_time: time.parse("09:30:00"),
+        formatted_date: time.format(billing_date, "dd/MM/yyyy"),
+        unix_roundtrip: time.from_unix(created_at.unix)
+    }
+
+route POST "/time/payload" take payload as TimePayload
+    reply 200, {
+        created_year: payload.created_at.year,
+        created_unix: payload.created_at.unix,
+        billing_year: payload.billing_date.year,
+        billing_weekday: payload.billing_date.weekday,
+        opening_hour: payload.opens_at.hour,
+        opening_on_date: payload.opens_at.on(payload.billing_date),
+        sla_hours: payload.sla.total_hours,
+        window_days: payload.business_window.duration.total_days,
+        window_contains_date: time.contains(payload.business_window, payload.billing_date)
+    }
+
+route POST "/time/task" take payload
+    reply 200, core.inspect_time_payload(payload)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SECTION 8 — Match expression
+#
+# match evaluates branches in order, returns the first matching arm's value.
+# `fallback ->` is the default case (like `else` or `default`).
+# Match returns a value, so it can be used in assignments.
+# ═════════════════════════════════════════════════════════════════════════════
+
+route GET "/match/status/:code"
+    # params.code is coerced to integer for URL params that look numeric.
+    label = match params.code
+        200 -> "OK"
+        201 -> "Created"
+        404 -> "Not Found"
+        500 -> "Internal Server Error"
+        fallback -> "Unknown"
+    reply 200, { code: params.code, label: label }
+
+route GET "/match/discount/:tier"
+    discount = match params.tier
+        "vip"     -> 0.30
+        "premium" -> 0.15
+        "regular" -> 0.05
+        fallback  -> 0.0
+    reply 200, { tier: params.tier, discount: discount }
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SECTION 9 — Tasks
+#
+# Tasks are first-class. They can be called directly, used in pipelines (>>),
+# and targeted by broadcast (*>>).
+# ═════════════════════════════════════════════════════════════════════════════
+
+route GET "/tasks/call"
+    # Direct task invocation — just call by name with arguments.
+    a = core.double(5)
+    b = core.triple(5)
+    c = core.greet("World")
+    reply 200, { double: a, triple: b, greet: c }
+
+route GET "/tasks/reply_call"
+    # reply accepts any expression, including a direct task call.
+    reply 200, core.greet("Reply")
+
+route GET "/tasks/return_task"
+    # Tasks are values: a task can return another task, and the returned task can be called.
+    selected = core.choose_double()
+    reply 200, { result: selected(6) }
+
+route GET "/tasks/inline"
+    # Tasks can be defined inline inside a route body.
+    # Scope is local to the route.
+    task square(n) => n * n
+    task cube(n)
+        n * n * n
+    reply 200, { square: square(4), cube: cube(3) }
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SECTION 10 — Pipeline (>>) with tasks
+#
+# >> passes the result of the left side to the right side.
+# When the left side is a List, >> ITERATES — each element is passed
+# individually to the right side. This is the implicit map behaviour.
+# To pass the whole list as-is, use *>> (broadcast).
+# ═════════════════════════════════════════════════════════════════════════════
+
+route GET "/pipeline/tasks"
+    # Scalar pipeline: 5 → double → triple = 30
+    result = 5 >> core.double >> core.triple
+    reply 200, { result: result }
+
+route GET "/pipeline/list_iterate"
+    # List pipeline: each element goes through double and triple separately.
+    # [1, 2, 3] >> double → [2, 4, 6] >> triple → [6, 12, 18]
+    result = [1, 2, 3] >> core.double >> core.triple
+    reply 200, { result: result }
+
+route GET "/pipeline/summarise"
+    # The summarise task receives the whole list (scalar input to the task).
+    data   = ["alpha", "beta", "gamma"]
+    result = core.summarise(data)
+    reply 200, result
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SECTION 11 — map / keep transformation
+#
+# `>> map var` opens a block that iterates over a list.
+# Inside the block, `var` refers to the current element.
+# `keep expression` returns a value back to the pipeline for this iteration.
+# Variables assigned inside the block are local to each iteration.
+# ═════════════════════════════════════════════════════════════════════════════
+
+route GET "/pipeline/map"
+    prices = [100, 200, 300]
+
+    # Apply a 10% tax to each price, keep the enriched map.
+    enriched = prices >> map price
+        tax   = price * 0.10
+        total = price + tax
+        keep { original: price, tax: tax, total: total }
+
+    reply 200, { items: enriched }
+
+route GET "/pipeline/map_filter"
+    numbers = [1, 2, 3, 4, 5]
+
+    # Double every number, then triple every result.
+    # Demonstrates chaining two map-producing pipelines.
+    result = numbers >> core.double >> core.triple
+
+    reply 200, { result: result }
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SECTION 12 — Parallel broadcast (*>>)
+#
+# value *>> -> task_a -> task_b
+#
+# *>> clones the input value for each branch and runs branches in PARALLEL.
+# Each branch receives the full, independent copy — no shared state.
+# Results come back in declaration order.
+#
+# Contrast with >>: >> iterates over lists; *>> does NOT iterate — it passes
+# the whole value (including a List) to each branch as-is.
+# ═════════════════════════════════════════════════════════════════════════════
+
+route GET "/broadcast/scalar"
+    # Same scalar input (10) goes to double and triple in parallel.
+    # results = [20, 30]
+    results = 10 *>>
+        -> core.double
+        -> core.triple
+    reply 200, { results: results, first: results.first(), last: results.last() }
+
+route GET "/broadcast/list"
+    # The entire list goes to summarise (no iteration) in each branch.
+    task count_items(lst) => lst.length()
+    task last_item(lst)   => lst.last()
+
+    data    = ["alpha", "beta", "gamma", "delta"]
+    results = data *>>
+        -> count_items
+        -> last_item
+    reply 200, { count: results.first(), last: results.last() }
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SECTION 13 — Request bindings
+#
+# `take` declares what parts of the request the route reads.
+# Multiple bindings can be combined: take payload, query, headers
+#
+# payload  → JSON body parsed as a Map
+# query    → URL query string (?key=val) as a Map
+# headers  → HTTP request headers as a Map (lowercase, hyphens kept)
+# raw      → unparsed body bytes as a String
+# ═════════════════════════════════════════════════════════════════════════════
+
+route POST "/bindings/payload" take payload
+    # payload is the parsed JSON body.
+    # Accessing a missing key returns null (not an error).
+    name  = payload.name  or "anonymous"
+    score = payload.score or 0
+    reply 200, { received_name: name, received_score: score }
+
+route GET "/bindings/query" take query
+    # query params come from the URL: /bindings/query?term=hello&limit=5
+    # All values arrive as strings; numeric coercion is NOT applied here
+    # (unlike URL path params, which are coerced).
+    term  = query.term  or "none"
+    limit = query.limit or "10"
+    reply 200, { term: term, limit: limit }
+
+route GET "/bindings/headers" take headers
+    # Headers arrive lowercase. Use `or` to provide fallbacks for optional headers.
+    # Note: hyphenated header names cannot be accessed via dot notation —
+    # use headers without hyphens for direct access.
+    content = headers.accept or "not-set"
+    reply 200, { accept: content }
+
+route POST "/bindings/raw" take raw
+    # `raw` captures the body as a plain String — useful for webhooks
+    # where you need to verify a signature before parsing JSON.
+    reply 200, { length: raw.length(), preview: raw }
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SECTION 14 — Schema validation & response serialisation
+#
+# `take payload as schema_name` validates the body against the schema.
+# Missing required fields or wrong types return HTTP 422 automatically.
+#
+# `reply CODE as schema_name, data` strips any fields not in the schema,
+# ensuring the response never leaks internal fields.
+# ═════════════════════════════════════════════════════════════════════════════
+
+route POST "/schema/validate" take payload as ItemPayload
+    # If `name` or `active` is missing or the wrong type, the request fails
+    # with 422 before this code even runs.
+    reply 200, { valid: true, name: payload.name, active: payload.active }
+
+route POST "/schema/response" take payload as ItemPayload
+    # reply as strips extra fields. The `secret` field will NOT appear
+    # in the response even though we include it here.
+    reply 200 as ItemResponse, {
+        id:     42,
+        name:   payload.name,
+        active: payload.active,
+        secret: "this field is stripped by response schema"
+    }
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SECTION 15 — Error handling
+#
+# `fail STATUS, body` immediately stops execution and returns an error response.
+# `require condition else fail STATUS, body` is a guard — fails if falsy.
+# Both are expressions that short-circuit the route body.
+# ═════════════════════════════════════════════════════════════════════════════
+
+route GET "/errors/not_found"
+    fail 404, "resource not found"
+
+route GET "/errors/bad_request"
+    fail 400, "invalid input"
+
+route POST "/errors/guard" take payload
+    require payload.name         else fail 400, "name is required"
+    require payload.name.length() > 2 else fail 422, "name too short"
+    reply 200, { ok: true, name: payload.name }
+
+route GET "/errors/conditional_fail/:code"
+    # Demonstrates fail with a fixed status code path.
+    # /errors/conditional_fail/200 → 200 OK
+    # /errors/conditional_fail/404 → 404 via require guard
+    is_error = params.code >= 400
+    require not is_error else fail 404, "requested error"
+    reply 200, { ok: true }
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SECTION 16 — Response content types
+#
+# By default, reply sends application/json.
+# `reply html` sends text/html; `reply text` sends text/plain.
+# ═════════════════════════════════════════════════════════════════════════════
+
+route GET "/response/json"
+    reply 200, { message: "I am JSON", type: "application/json" }
+
+route GET "/response/html"
+    reply html 200, "<html><body><h1>MarretaLang</h1><p>HTML response.</p></body></html>"
+
+route GET "/response/text"
+    reply text 200, "This is a plain text response from MarretaLang."
+
+route GET "/response/status_codes/201"
+    reply 201, { created: true }
+
+route GET "/response/status_codes/404"
+    reply 404, { code: 404 }
+
+route GET "/response/variable/list"
+    list = ["a", "b"]
+    reply 200, list
+
+route GET "/response/variable/map"
+    value = { name: "Ana", active: true }
+    reply 200, value
+
+route GET "/response/variable/integer"
+    value = 42
+    reply 200, value
+
+route GET "/response/variable/float"
+    value = 19.9
+    reply 200, value
+
+route GET "/response/variable/string"
+    value = "hello"
+    reply 200, value
+
+route GET "/response/variable/boolean"
+    value = true
+    reply 200, value
+
+route GET "/response/variable/null"
+    value = null
+    reply 200, value
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SECTION 22 — Utility methods  (Phase 5 + Phase 6)
+#
+# New built-in methods across all value types.
+# ═════════════════════════════════════════════════════════════════════════════
+
+route GET "/utils/string/starts_ends"
+    s = "Bearer token123"
+    path = "/api/v1/users"
+    reply 200, {
+        bearer_ok:    s.starts_with("Bearer"),
+        bearer_not:   s.starts_with("Basic"),
+        prod_ends:    "webhook-prod".ends_with("prod"),
+        prod_not:     "webhook-prod".ends_with("dev"),
+        index_found:  path.index_of("/v1"),
+        index_missing: path.index_of("/v99")
+    }
+
+route GET "/utils/list/join"
+    words = ["alpha", "beta", "gamma"]
+    nums  = [1, 2, 3]
+    reply 200, {
+        joined:  words.join(", "),
+        piped:   nums.join("-")
+    }
+
+route GET "/utils/list/sort"
+    nums    = [3, 1, 4, 1, 5, 9, 2, 6]
+    strs    = ["banana", "apple", "cherry"]
+    mixed   = [3, 1, 2]
+    reply 200, {
+        nums_sorted: nums.sort(),
+        strs_sorted: strs.sort(),
+        mixed_sorted: mixed.sort()
+    }
+
+route GET "/utils/list/unique"
+    dupes = [1, 2, 1, 3, 2, 4]
+    reply 200, { unique: dupes.unique() }
+
+route GET "/utils/list/flatten"
+    nested = [[1, 2], [3, 4], 5]
+    reply 200, { flat: nested.flatten() }
+
+route GET "/utils/list/slice"
+    items = ["a", "b", "c", "d", "e"]
+    reply 200, {
+        middle:  items.slice(1, 4),
+        first2:  items.slice(0, 2),
+        clamped: items.slice(3, 99)
+    }
+
+route GET "/utils/map/delete"
+    m = { name: "alice", age: 30, secret: "hidden" }
+    cleaned = m.delete("secret")
+    reply 200, {
+        without_secret: cleaned,
+        original_size:  m.size(),
+        cleaned_size:   cleaned.size()
+    }
+
+route GET "/utils/number/round"
+    f = 3.14159
+    reply 200, {
+        round0:   f.round(),
+        round2:   f.round(2),
+        floor:    f.floor(),
+        ceil:     f.ceil(),
+        int_min:  10.min(5),
+        int_max:  10.max(5),
+        flt_min:  3.7.min(2.1),
+        flt_max:  3.7.max(5.0)
+    }
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SECTION 23 — Language ergonomics  (Phases 1–4)
+# ═════════════════════════════════════════════════════════════════════════════
+
+# Phase 1 — fail with map body
+route POST "/errors/fail_map"
+    fail 404, { error: "not found", code: "ITEM_NOT_FOUND" }
+
+# Phase 1 — fail with variable
+route GET "/errors/fail_var"
+    msg = { error: "gone", reason: "resource deleted" }
+    fail 410, msg
+
+# Phase 2 — string interpolation with expressions
+route GET "/strings/interpolation_expr"
+    items = [1, 2, 3, 4]
+    price = 9.99
+    reply 200, {
+        count_str:  "Items: #{items.length()}",
+        math_str:   "With tax: #{price * 1.1}",
+        upper_str:  "Hello #{\"world\".upper()}"
+    }
+
+# Phase 3 — subscript access on map
+route GET "/access/subscript_map" take headers
+    token = headers["x-api-token"]
+    ct    = headers["content-type"]
+    reply 200, { token: token, content_type: ct }
+
+# Phase 3 — subscript access on list
+route GET "/access/subscript_list"
+    items = ["zero", "one", "two", "three"]
+    reply 200, {
+        first:   items[0],
+        second:  items[1],
+        last:    items[3],
+        missing: items[99]
+    }
+
+# Phase 4a — reply with dynamic status
+route GET "/response/dynamic_status"
+    code = 202
+    reply code, { accepted: true }
+
+# Phase 4b — keep expr if cond
+route GET "/pipeline/keep_if"
+    # 0 has no matching keep arm — element is dropped implicitly
+    scores = [10, 60, 110, 30, 80, 0]
+    labeled = scores >> map s
+        keep "high"   if s > 100
+        keep "medium" if s > 50
+        keep "low"    if s > 0
+
+    reply 200, { labeled: labeled }
+
+# Phase 4b — skip if cond
+route GET "/pipeline/skip_guard"
+    items = [
+        { active: true,  name: "alpha" },
+        { active: false, name: "beta" },
+        { active: true,  name: "gamma" }
+    ]
+    active_names = items >> map item
+        skip if not item.active
+        keep item.name
+
+    reply 200, { active: active_names }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 24 — Error Handling  (v0.6.0)
+# ═══════════════════════════════════════════════════════════════════════════
+
+# raise — uncaught reaches route as HTTP 500
+route GET "/errors/raise_uncaught"
+    raise "something went wrong"
+
+# raise with condition
+route GET "/errors/raise_conditional/:active"
+    raise "not active" if params.active == "false"
+    reply 200, { ok: true }
+
+# raise inside task — propagates to route
+route GET "/errors/raise_from_task"
+    task validate(n)
+        raise "must be positive" if n <= 0
+        n
+
+    result = validate(-1)
+    reply 200, { result: result }
+
+# require else raise
+route GET "/errors/require_raise"
+    val = null
+    require val else raise "value is required"
+    reply 200, { val: val }
+
+# rescue pipeline — catches raise
+route GET "/errors/rescue_pipeline"
+    task always_fails(x)
+        raise "intentional failure"
+
+    result = "input" >> always_fails >> rescue fail 503, "rescued"
+    reply 200, { result: result }
+
+# rescue expression — substitutes fallback value
+route GET "/errors/rescue_expr"
+    task risky(x)
+        raise "oops"
+
+    val = risky("x") rescue "fallback"
+    reply 200, { val: val }
+
+# rescue null — silences error
+route GET "/errors/rescue_null"
+    task might_fail(x)
+        raise "gone"
+
+    val = might_fail("x") rescue null
+    reply 200, { val: val }
+
+# rescue block — multi-line recovery
+route GET "/errors/rescue_block"
+    task blow_up(x)
+        raise "boom"
+
+    result = "data" >> blow_up >> rescue
+        fail 503, { error: error.message, code: error.code }
+
+# ── Section 24: Error identity — semantic codes and rich messages ──────────────
+
+# reference error — uncaught undefined variable returns code=reference_error
+route GET "/errors/identity/reference"
+    x = undefined_variable
+    reply 200, { x: x }
+
+# raise error rescued — exposes message and code fields
+route GET "/errors/identity/raise_rescued"
+    task domain_check(val)
+        raise "Invalid value: #{val}" if val < 0
+        val
+
+    result = domain_check(-5) rescue { error: error.message, code: error.code }
+    reply 200, result
+
+# db error rescued — exposes message, code, and op fields
+route GET "/errors/identity/db_rescued"
+    rows = db.native_query("SELECT * FROM nonexistent_table_xyz") rescue {
+        error: error.message,
+        code: error.code,
+        op: error.op
+    }
+    reply 200, rows
+
+# Phase C — uncaught db error through nested task chain.
+# Stderr trace must include route frame + both task frames + db op label.
+route GET "/errors/trace/db_uncaught_chain"
+    task deep_query()
+        db.native_query("SELECT * FROM nonexistent_xyz_trace_table")
+
+    task wrap_query()
+        deep_query()
+
+    rows = wrap_query()
+    reply 200, { rows: rows }

@@ -1,0 +1,46 @@
+scenario "supports path params in when"
+    when GET "/conditional/if_else/95"
+
+    then status 200
+    then response is {
+        body: {
+            bucket: "excellent"
+        }
+    }
+
+scenario "supports query params in when"
+    when GET "/bindings/query?term=scenario&limit=7"
+
+    then status 200
+    then response is {
+        body: {
+            term: "scenario",
+            limit: "7"
+        }
+    }
+
+scenario "supports request headers in when"
+    when GET "/bindings/headers" and headers {
+        accept: "application/json"
+    }
+
+    then status 200
+    then response is {
+        body: {
+            accept: "application/json"
+        }
+    }
+
+scenario "supports request body in when"
+    when POST "/bindings/payload" with {
+        name: "Scenario Payload",
+        score: 77
+    }
+
+    then status 200
+    then response is {
+        body: {
+            received_name: "Scenario Payload",
+            received_score: 77
+        }
+    }

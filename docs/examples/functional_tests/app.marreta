@@ -1,0 +1,61 @@
+# ── MarretaLang — Functional Test Suite ───────────────────────────────────────
+#
+# Purpose: exercise every language feature via real HTTP endpoints.
+# Each route is a focused demonstration of one concept. Comments explain
+# WHY the code is written a certain way — read top to bottom as a tutorial.
+#
+# Sections:
+#   1.  Types & arithmetic
+#   2.  String methods
+#   3.  String interpolation
+#   4.  List methods
+#   5.  Map methods
+#   6.  Operators & logic
+#   7.  Conditional assignment (if suffix)
+#   8.  Match expression
+#   9.  Tasks — inline and block
+#   10. Pipeline (>>) with tasks
+#   11. map / keep transformation
+#   12. Parallel broadcast (*>>)
+#   13. Request bindings — payload, query, headers, raw
+#   14. Schema validation & response serialisation
+#   15. Error handling — fail, require
+#   16. Response content types (json, html, text)
+#   17. Direct CRUD  (requires DB)
+#   18. Pipeline queries (requires DB)
+#   19. Parallel DB queries (requires DB)
+#   20. Native query (requires DB)
+#   21. Transactions (requires DB)
+#   22. Utility methods
+#   23. Language ergonomics
+#   24. Error Handling (raise/rescue)
+#   25. Doc module — MongoDB (requires doc provider)
+#   26. Parallel broadcast (POST routes)
+#   27. Schema contracts showcase
+#   28. Queue module — producers, consumers, nack (requires RabbitMQ)
+#   29. Cache module — get/set/delete/exists/ttl/expire/incr/decr/bulk (requires Redis)
+#   30. Filesystem module — local UTF-8 text I/O
+#   31. HTTP Client module — outbound http_client.* (self-referencing)
+#   32. Iteration & accumulation
+#   33. Authentication & authorization
+#   34. UUID namespace
+#   35. Native logging namespace
+#   36. W3C Trace Context
+#   37. Feature flags
+#
+# Routes, tasks, and schemas are loaded automatically from:
+#   routes/core.marreta, routes/db.marreta, routes/doc.marreta,
+#   routes/parallel.marreta, routes/contracts.marreta, routes/queue.marreta,
+#   routes/cache.marreta, routes/filesystem.marreta, routes/http_client.marreta, routes/iteration.marreta
+#   routes/auth.marreta, routes/uuid.marreta, routes/log.marreta
+#   routes/trace_context.marreta
+#   routes/feature_flags.marreta
+#   tasks/core.marreta
+#   schemas/core.marreta
+#
+# Run: ./test.sh  (starts postgres + mongodb + rabbitmq + server automatically)
+# ──────────────────────────────────────────────────────────────────────────────
+
+project_name = "marreta-functional-tests"
+project_version = "1.0.0"
+requires_marreta = ">=0.2.0"

@@ -1,0 +1,14 @@
+scenario "conditional assignment binds when the condition holds; or keeps the value"
+    when POST "/expr/conditional" with { score: 150, name: "Ana" }
+    then status 200
+    then response is { body: { label: "premium", name: "Ana" } }
+
+scenario "or supplies the default when the value is absent"
+    when POST "/expr/conditional" with { score: 150 }
+    then status 200
+    then response is { body: { name: "anonymous" } }
+
+scenario "boolean and comparison operators"
+    when GET "/expr/booleans/10"
+    then status 200
+    then response is { body: { and: true, or: false, not: false } }

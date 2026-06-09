@@ -1,0 +1,136 @@
+# ── Auth routes ──────────────────────────────────────────────────────────────
+# Demonstrates API key authentication, JWT provider shapes, and route-level
+# authorization.
+#
+# The API key routes are exercised through real HTTP requests in test.sh.
+# JWT routes are exercised through marreta test with `given auth.<provider>`;
+# the Rust runtime tests validate real JWT signatures, JWKS, public keys, HMAC,
+# expiration, nbf, issuer, audience, and algorithm-confusion protection.
+
+# API key with a hashed secret. This is the recommended shape for internal
+# service-to-service access when a caller sends a fixed key in a header.
+# Covered by test.sh with missing-key, valid-key, allow success, and 403 cases.
+auth api_key internal_auth {
+    header: "x-api-key"
+    secret_hash: env.MARRETA_AUTH_INTERNAL_API_KEY_HASH
+    principal: "functional-user"
+}
+
+# JWT with issuer-derived OIDC discovery. This is the happy path for external
+# IdPs such as Auth0, Cognito, Keycloak, Okta, Azure AD, or Google.
+# Covered by tests/auth/admin_test.marreta using `given auth.scenario_auth`.
+auth jwt scenario_auth {
+    issuer: "https://issuer.example.test"
+    audience: "functional-tests"
+}
+
+# Explicit JWKS URL. Use this when the IdP does not expose standard OIDC
+# discovery or when the JWKS endpoint must be pinned directly.
+# Covered by tests/auth/jwks_test.marreta using `given auth.scenario_jwks_auth`.
+auth jwt scenario_jwks_auth {
+    issuer: "https://issuer.example.test"
+    audience: "functional-tests"
+    jwks_url: env.MARRETA_AUTH_SCENARIO_JWKS_URL
+    algorithm: "RS256"
+}
+
+# Fixed public key file. Use this when a partner gives you a PEM public key
+# instead of exposing OIDC/JWKS. The file path avoids awkward multiline env vars.
+# Covered by tests/auth/public_key_test.marreta using `given auth.scenario_public_key_auth`.
+auth jwt scenario_public_key_auth {
+    issuer: "https://issuer.example.test"
+    audience: "functional-tests"
+    public_key_pem_file: env.MARRETA_AUTH_SCENARIO_PUBLIC_KEY_FILE
+    algorithm: "RS256"
+}
+
+# Fixed HMAC secret. Useful for internal service tokens where the same shared
+# secret signs and validates tokens.
+# Covered by tests/auth/hmac_test.marreta using `given auth.scenario_hmac_auth`.
+auth jwt scenario_hmac_auth {
+    issuer: "https://issuer.example.test"
+    audience: "functional-tests"
+    secret: env.MARRETA_AUTH_SCENARIO_HMAC_SECRET
+    algorithm: "HS256"
+}
+
+route GET "/auth/me"
+    require auth internal_auth
+
+    reply 200, {
+        provider: auth.provider,
+        type: auth.type,
+        subject: auth.subject,
+        user_id: auth.user.id,
+        claims: auth.claims
+    }
+
+route GET "/auth/owned"
+    require auth internal_auth
+    allow auth.user.id == "functional-user"
+
+    reply 200, { allowed: true, user_id: auth.user.id }
+
+route GET "/auth/forbidden"
+    require auth internal_auth
+    allow auth.user.id == "other-user"
+
+    reply 200, { allowed: true }
+
+route GET "/auth/time/me"
+    require auth internal_auth
+
+    reply 200, {
+        provider: auth.provider,
+        subject: auth.subject,
+        checked_at: time.now(),
+        today: time.today()
+    }
+
+route GET "/auth/math/me"
+    require auth internal_auth
+
+    subject_size = auth.subject.length()
+
+    reply 200, {
+        subject_size: subject_size,
+        bounded_subject_size: math.clamp(subject_size, min: 5, max: 20),
+        rounded_threshold: math.round(3.6)
+    }
+
+route GET "/auth/scenario-admin"
+    require auth scenario_auth
+    allow "admin" in auth.user.roles
+
+    reply 200, {
+        user_id: auth.user.id,
+        roles: auth.user.roles,
+        provider: auth.provider
+    }
+
+route GET "/auth/scenario-jwks"
+    require auth scenario_jwks_auth
+    allow "admin" in auth.user.roles
+
+    reply 200, {
+        user_id: auth.user.id,
+        provider: auth.provider
+    }
+
+route GET "/auth/scenario-public-key"
+    require auth scenario_public_key_auth
+    allow "admin" in auth.user.roles
+
+    reply 200, {
+        user_id: auth.user.id,
+        provider: auth.provider
+    }
+
+route GET "/auth/scenario-hmac"
+    require auth scenario_hmac_auth
+    allow "service" in auth.user.roles
+
+    reply 200, {
+        user_id: auth.user.id,
+        provider: auth.provider
+    }

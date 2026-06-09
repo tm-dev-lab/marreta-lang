@@ -1,0 +1,27 @@
+# match (value-returning) with fallback
+route GET "/control/match/:code"
+    label = match params.code
+        200 -> "OK"
+        404 -> "Not Found"
+        500 -> "Internal Server Error"
+        fallback -> "Unknown"
+
+    reply 200, { code: params.code, label: label }
+
+# if / else if / else as an expression
+route GET "/control/tier/:score"
+    tier = if params.score > 100
+        "high"
+    else if params.score > 50
+        "mid"
+    else
+        "low"
+
+    reply 200, { score: params.score, tier: tier }
+
+# require / reject guards with else fail
+route POST "/control/guard" take payload
+    require payload.name else fail 400, "name is required"
+    reject payload.blocked else fail 403, "blocked account"
+
+    reply 200, { ok: true, name: payload.name }

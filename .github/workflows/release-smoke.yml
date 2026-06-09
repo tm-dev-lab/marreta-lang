@@ -1,0 +1,83 @@
+name: Release Smoke Test
+
+# Manual only. Downloads the published binaries for a release tag and runs the
+# core CLI loop (init, fmt, lint, doctor, test, serve + curl /greetings) on each
+# target, to confirm the release is minimally functional across the OS matrix.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to smoke-test (e.g. v0.2.0)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x86_64
+            os: ubuntu-latest
+            asset: marreta-linux-x86_64
+          - name: Linux arm64
+            os: ubuntu-24.04-arm
+            asset: marreta-linux-arm64
+          # The x86_64 binary runs on the arm64 runner under Rosetta 2, so it does
+          # not depend on the scarce hosted Intel runners.
+          - name: macOS x86_64 (Rosetta)
+            os: macos-latest
+            asset: marreta-macos-x86_64
+            rosetta: true
+          - name: macOS arm64
+            os: macos-latest
+            asset: marreta-macos-arm64
+          # Windows runs the Linux x86_64 binary under WSL.
+          - name: Windows (WSL)
+            os: windows-latest
+            asset: marreta-linux-x86_64
+            wsl: true
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v5
+
+      # ── Native runners: Linux and macOS ──────────────────────────────────
+      - name: Ensure Rosetta 2 (run the x86_64 binary on the arm64 runner)
+        if: ${{ matrix.rosetta }}
+        run: softwareupdate --install-rosetta --agree-to-license
+
+      - name: Download release binary
+        if: ${{ !matrix.wsl }}
+        run: >
+          gh release download "${{ inputs.tag }}"
+          --repo "${{ github.repository }}"
+          --pattern "${{ matrix.asset }}"
+          --dir .
+
+      - name: Smoke test
+        if: ${{ !matrix.wsl }}
+        run: bash .github/scripts/release_smoke.sh "$PWD/${{ matrix.asset }}"
+
+      # ── Windows, exercised through WSL (runs the Linux x86_64 binary) ─────
+      - name: Download release binary (Windows host)
+        if: ${{ matrix.wsl }}
+        run: gh release download "${{ inputs.tag }}" --repo "${{ github.repository }}" --pattern "${{ matrix.asset }}" --dir .
+
+      - name: Set up WSL (Ubuntu)
+        if: ${{ matrix.wsl }}
+        uses: Vampire/setup-wsl@v3
+        with:
+          distribution: Ubuntu-24.04
+
+      - name: Smoke test (inside WSL)
+        if: ${{ matrix.wsl }}
+        shell: wsl-bash {0}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl
+          bash .github/scripts/release_smoke.sh "$PWD/${{ matrix.asset }}"

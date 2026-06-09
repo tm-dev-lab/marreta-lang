@@ -1,0 +1,19 @@
+scenario "logs preserve payload through broadcast branches"
+    when POST "/log/broadcast" with {
+        event: "broadcasted",
+        order_id: 9
+    }
+
+    then status 200
+    then response is {
+        body: {
+            first: {
+                event: "broadcasted",
+                order_id: 9
+            },
+            second: {
+                event: "broadcasted",
+                order_id: 9
+            }
+        }
+    }

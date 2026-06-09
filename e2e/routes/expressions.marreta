@@ -1,0 +1,15 @@
+# conditional assignment (value if condition) and the `or` default operator
+route POST "/expr/conditional" take payload
+    label = "premium" if payload.score > 100
+    name = payload.name or "anonymous"
+
+    reply 200, { label: label, name: name }
+
+# boolean / comparison operators
+route GET "/expr/booleans/:n"
+    n = params.n
+    reply 200, {
+        and: n > 0 and n < 100,
+        or: n < 0 or n > 50,
+        not: not n == 0
+    }

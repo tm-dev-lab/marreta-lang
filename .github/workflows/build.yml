@@ -1,0 +1,73 @@
+name: Build
+
+# Manual only.
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Validate every target the release workflow ships, plus the WSL path.
+          - name: Linux x86_64
+            os: ubuntu-latest
+          - name: Linux arm64
+            os: ubuntu-24.04-arm
+          - name: macOS (arm64 native + x86_64 cross)
+            os: macos-latest
+          - name: Windows (WSL)
+            os: windows-latest
+            wsl: true
+    steps:
+      - uses: actions/checkout@v5
+
+      # ── Native runners: Linux and macOS ──────────────────────────────────
+      - name: Install Rust toolchain
+        if: ${{ !matrix.wsl }}
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo artifacts
+        if: ${{ !matrix.wsl }}
+        uses: Swatinem/rust-cache@v2
+
+      - name: fmt + clippy + test + build
+        if: ${{ !matrix.wsl }}
+        run: |
+          cargo fmt --check
+          cargo clippy --all-targets -- -D warnings
+          cargo test
+          cargo build --release
+
+      # Intel macOS is shipped as a cross-compile from the arm64 runner (the
+      # hosted Intel runners are scarce), so validate that target compiles here.
+      - name: Cross-compile check for macOS x86_64
+        if: ${{ matrix.os == 'macos-latest' }}
+        run: |
+          rustup target add x86_64-apple-darwin
+          cargo build --release --target x86_64-apple-darwin
+
+      # ── Windows, exercised through WSL (the supported Windows path) ───────
+      - name: Set up WSL (Ubuntu)
+        if: ${{ matrix.wsl }}
+        uses: Vampire/setup-wsl@v3
+        with:
+          distribution: Ubuntu-24.04
+
+      - name: fmt + clippy + test + build (inside WSL)
+        if: ${{ matrix.wsl }}
+        shell: wsl-bash {0}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential curl pkg-config libssl-dev
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          . "$HOME/.cargo/env"
+          cargo fmt --check
+          cargo clippy --all-targets -- -D warnings
+          cargo test
+          cargo build --release

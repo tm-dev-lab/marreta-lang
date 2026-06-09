@@ -1,0 +1,9 @@
+# Keep LF line endings on files that the runtime parses or runs, even when the
+# repo is checked out on a Windows runner (autocrlf would rewrite them with CRLF):
+#  - shell scripts: CRLF breaks the shebang/`set` lines.
+#  - .marreta source: the lexer is newline/indentation sensitive and rejects \r.
+#  - marreta.env: CRLF would append \r to env values (e.g. secret hashes).
+*.sh text eol=lf
+*.marreta text eol=lf
+*.env text eol=lf
+marreta.env text eol=lf

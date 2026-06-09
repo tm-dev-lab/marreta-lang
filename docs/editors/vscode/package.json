@@ -1,0 +1,104 @@
+{
+  "name": "marretalang",
+  "displayName": "MarretaLang",
+  "description": "Official VS Code support for the Marreta language",
+  "version": "0.2.18",
+  "publisher": "MarretaTeam",
+  "license": "MIT",
+  "icon": "icons/marreta-mascot.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tm-dev-lab/marreta-lang.git"
+  },
+  "homepage": "https://github.com/tm-dev-lab/marreta-lang/tree/main/docs/editors/vscode",
+  "keywords": [
+    "marreta",
+    "rest",
+    "api",
+    "dsl",
+    "backend"
+  ],
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "main": "./extension.js",
+  "activationEvents": [
+    "onLanguage:marreta"
+  ],
+  "categories": [
+    "Programming Languages",
+    "Snippets",
+    "Linters"
+  ],
+  "contributes": {
+    "commands": [
+      { "command": "marreta.serve", "title": "Serve", "category": "Marreta" },
+      { "command": "marreta.test", "title": "Test", "category": "Marreta" },
+      { "command": "marreta.lint", "title": "Lint", "category": "Marreta" },
+      { "command": "marreta.format", "title": "Format Document", "category": "Marreta" },
+      { "command": "marreta.doctor", "title": "Doctor", "category": "Marreta" },
+      { "command": "marreta.init", "title": "Init Project", "category": "Marreta" }
+    ],
+    "configuration": {
+      "title": "Marreta",
+      "properties": {
+        "marreta.path": {
+          "type": "string",
+          "default": "marreta",
+          "description": "Path to the Marreta CLI binary."
+        },
+        "marreta.tooling.debounceMs": {
+          "type": "number",
+          "default": 150,
+          "minimum": 0,
+          "description": "Debounce delay for CLI-backed editor tooling calls."
+        },
+        "marreta.diagnostics.onChange": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run Marreta diagnostics while editing. Diagnostics also run on save."
+        }
+      }
+    },
+    "languages": [
+      {
+        "id": "marreta",
+        "aliases": ["Marreta", "marreta"],
+        "extensions": [".marreta"],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/marreta.svg",
+          "dark": "./icons/marreta.svg"
+        }
+      }
+    ],
+    "iconThemes": [
+      {
+        "id": "marreta-icons",
+        "label": "Marreta File Icons",
+        "path": "./icons/marreta-icon-theme.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "marreta",
+        "scopeName": "source.marreta",
+        "path": "./syntaxes/marreta.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "marreta",
+        "path": "./snippets/marreta.json"
+      }
+    ],
+    "semanticTokenScopes": [
+      {
+        "scopes": {
+          "namespace": ["support.class.marreta", "support.type"],
+          "function": ["entity.name.function.marreta", "support.function"]
+        }
+      }
+    ]
+  }
+}

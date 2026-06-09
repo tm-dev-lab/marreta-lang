@@ -1,0 +1,137 @@
+# ── Schemas ───────────────────────────────────────────────────────────────────
+#
+# Schemas define the expected shape of a map. Fields without `?` are required.
+# Used for request validation (take payload as schema) and response shaping
+# (reply CODE as schema — strips extra fields, enforces types).
+
+export schema ItemPayload
+    name:   string
+    active: boolean
+
+export schema ItemResponse
+    id:     integer
+    name:   string
+    active: boolean
+
+export schema SearchPayload
+    term:  string
+    limit: integer
+
+# ── Schemas used by SECTION 27 (contracts showcase) ──────────────────────────
+
+export schema Address
+    street:  string
+    city:    string
+    zipcode: string
+
+export schema ContactPayload
+    name:    string
+    email:   string
+    age?:    integer
+    address: Address
+
+export schema ContactResponse
+    id:      integer
+    name:    string
+    email:   string
+    address: Address
+
+export schema ContactSummary
+    id:    integer
+    name:  string
+
+export schema QueueOrder
+    order_id: integer
+    customer: string
+    total:    float
+
+export schema MathPayload
+    value: float
+    min: integer
+    max: integer
+
+export schema MathResponse
+    rounded: float
+    bounded: float
+
+export schema ContractTypesPayload
+    status: enum ["pending", "paid", "cancelled"]
+    amount: decimal
+
+export schema ContractTypesRecord
+    db: contract_type_records
+
+    id: integer
+    status: enum ["pending", "paid", "cancelled"]
+    amount: decimal
+
+export schema ConstructorMessage
+    message: string
+    count: integer
+
+export schema HttpOrderPayload
+    item: string
+    quantity: integer
+
+export schema HttpCreatedOrder
+    order_id: string
+    status: string
+
+# ── Schemas used by Time API examples ────────────────────────────────────────
+
+export schema TimePayload
+    created_at: instant
+    billing_date: date
+    opens_at: time
+    sla: duration
+    business_window: interval
+
+export schema DbTimeEntry
+    db: time_entries
+
+    id: integer
+    created_at: instant
+    billing_date: date
+    opens_at: time
+    sla: duration
+    business_window: interval
+
+# ── Persistent schemas used by relation-navigation examples ───────────────────
+
+export schema DbAddress
+    db: addresses
+
+    id: integer
+    city: string
+    zipcode: string
+
+export schema DbUser
+    db: users
+
+    id: integer
+    name: string
+    address?: DbAddress
+    orders: list of DbOrder
+
+export schema DbOrder
+    db: orders
+
+    id: integer
+    total: float
+    customer: DbUser
+
+# ── Spec 062: relation-aware contracts ───────────────────────────────────────
+#
+# A value schema referencing a persistent schema: `customer` is a foreign-key
+# relation (DbUser is `db:`), so it is let through — not validated as a nested object.
+export schema CreateOrderRequest
+    note: string
+    customer: DbUser
+
+# A persistent self-reference (a tree via FK) — allowed.
+export schema TreeNode
+    db: tree_nodes
+
+    id: integer
+    label: string
+    parent: TreeNode

@@ -1,0 +1,10 @@
+project_name = "entra-id-auth-validation"
+project_version = "0.1.0"
+requires_marreta = ">=0.2.0"
+
+auth jwt entra_id {
+    issuer: env.ENTRA_ISSUER
+    audience: env.ENTRA_AUDIENCE
+    jwks_url: env.ENTRA_JWKS_URL
+    algorithm: "RS256"
+}

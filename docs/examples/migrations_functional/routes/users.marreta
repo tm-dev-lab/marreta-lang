@@ -1,0 +1,25 @@
+route POST "/users" take payload
+    saved = db.users.save(payload)
+    reply 201, saved
+
+route GET "/users/:id"
+    user = db.users.find(params.id)
+    require user else fail 404, "not found"
+    reply 200, user
+
+route POST "/orders" take payload
+    saved = db.orders.save(payload)
+    reply 201, saved
+
+route GET "/orders/:id/customer"
+    order = db.orders.find(params.id)
+    require order else fail 404, "order not found"
+    customer = order.customer >> fetch
+    require customer else fail 404, "customer not found"
+    reply 200, customer
+
+route GET "/users/:id/orders"
+    user = db.users.find(params.id)
+    require user else fail 404, "user not found"
+    orders = user.orders >> fetch
+    reply 200, { items: orders, count: orders.length() }

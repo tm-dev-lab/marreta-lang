@@ -1,0 +1,72 @@
+export schema Customer
+    db: customers
+
+    id: integer
+    name: string
+    email: string
+    orders: list of ServiceOrder
+
+export schema ServiceOrder
+    db: orders
+
+    id: integer
+    customer: Customer
+    description: string
+    total_amount: float
+    status: string
+    created_at: instant
+    completed_at?: instant
+
+export schema CustomerCreatePayload
+    name: string
+    email: string
+
+export schema CustomerRenamePayload
+    name: string
+
+export schema ServiceOrderCreatePayload
+    customer_id: integer
+    description: string
+    total_amount: float
+
+export schema OrderStatusResponse
+    id: integer
+    status: string
+    created_at: instant
+    completed_at?: instant
+
+export schema OrderDetails
+    id: integer
+    customer_id: integer
+    customer_name: string
+    description: string
+    total_amount: float
+    status: string
+    created_at: instant
+    completed_at?: instant
+
+export schema OrderCreatedEvent
+    order_id: integer
+    customer_id: integer
+    customer_email: string
+    status: string
+    created_at: instant
+
+export schema BillingCommand
+    order_id: integer
+    customer_id: integer
+    customer_name: string
+    total_amount: float
+    status: string
+    created_at: instant
+    completed_at: instant
+
+export schema AuditSnapshot
+    order_id: integer
+    customer_id: integer
+    customer_name: string
+    description: string
+    total_amount: float
+    status: string
+    created_at: instant
+    completed_at: instant

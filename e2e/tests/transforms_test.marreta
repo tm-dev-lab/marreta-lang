@@ -1,0 +1,24 @@
+scenario "map and keep label the scores"
+    when POST "/transforms/labels" with { scores: [10, 60, 110, 0] }
+    then status 200
+    then response is { body: { labeled: ["low", "medium", "high"] } }
+
+scenario "reduce sums the numbers"
+    when POST "/transforms/sum" with { numbers: [1, 2, 3, 4] }
+    then status 200
+    then response is { body: { total: 10 } }
+
+scenario "task calls double and triple a path param"
+    when GET "/transforms/calc/5"
+    then status 200
+    then response is { body: { double: 10, triple: 15 } }
+
+scenario "broadcast fans the value out to two tasks"
+    when POST "/transforms/fanout" with { value: 5 }
+    then status 200
+    then response is { body: { double: 10, triple: 15 } }
+
+scenario "interpolation greets by name"
+    when GET "/transforms/greet/world"
+    then status 200
+    then response is { body: { message: "hello, world" } }

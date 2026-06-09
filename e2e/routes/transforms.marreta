@@ -1,0 +1,35 @@
+task double(n) => n * 2
+
+task triple(n) => n * 3
+
+# pipeline + map + keep/skip in a single pass
+route POST "/transforms/labels" take payload
+    labeled = payload.scores >> map s
+        keep "high"   if s > 100
+        keep "medium" if s > 50
+        keep "low"    if s > 0
+
+    reply 200, { labeled: labeled }
+
+# reduce over a list
+route POST "/transforms/sum" take payload
+    total = payload.numbers >> reduce(0) acc, item
+        acc + item
+
+    reply 200, { total: total }
+
+# direct task calls (return values) with a path param
+route GET "/transforms/calc/:n"
+    reply 200, { double: double(params.n), triple: triple(params.n) }
+
+# parallel broadcast (*>>): each arm receives the broadcast input, then subscript
+route POST "/transforms/fanout" take payload
+    results = payload.value *>>
+        -> double
+        -> triple
+
+    reply 200, { double: results[0], triple: results[1] }
+
+# string interpolation with a path param
+route GET "/transforms/greet/:name"
+    reply 200, { message: "hello, #{params.name}" }

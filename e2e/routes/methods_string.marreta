@@ -1,0 +1,15 @@
+# string methods (catalog: string.*)
+route GET "/methods/string"
+    s = "  Hello, Marreta  "
+    reply 200, {
+        length: s.length(),
+        upper: s.upper(),
+        lower: s.lower(),
+        trim: s.trim(),
+        contains: s.contains("Marreta"),
+        starts_with: s.starts_with("  H"),
+        ends_with: s.ends_with("  "),
+        index_of: "abcabc".index_of("c"),
+        replace: "a-b-c".replace("-", "_"),
+        split: "a,b,c".split(",")
+    }

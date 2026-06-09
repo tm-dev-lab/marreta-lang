@@ -1,0 +1,13 @@
+scenario "generates canonical uuid payloads"
+    when POST "/uuid/generate"
+
+    then status 200
+    then response is {
+        body: {
+            public_id: anything,
+            record_id: anything,
+            ordered: true,
+            public_length: 36,
+            record_length: 36
+        }
+    }

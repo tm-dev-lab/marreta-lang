@@ -1,0 +1,16 @@
+{
+  "iconDefinitions": {
+    "_marreta": { "iconPath": "./marreta.svg" },
+    "_file": { "iconPath": "./file.svg" },
+    "_folder": { "iconPath": "./folder.svg" }
+  },
+  "file": "_file",
+  "folder": "_folder",
+  "folderExpanded": "_folder",
+  "fileExtensions": {
+    "marreta": "_marreta"
+  },
+  "languageIds": {
+    "marreta": "_marreta"
+  }
+}

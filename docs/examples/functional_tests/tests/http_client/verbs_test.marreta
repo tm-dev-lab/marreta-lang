@@ -1,0 +1,165 @@
+scenario "supports POST scenario with request body"
+    given http_client.post("http://127.0.0.1:3737/stub/orders", anything) returns {
+        status: 201,
+        body: {
+            order_id: "scenario-order-201",
+            status: "created"
+        },
+        headers: {
+            content_type: "application/json"
+        }
+    }
+
+    when POST "/http-client/post" with {
+        item: "scenario-book"
+    }
+
+    then status 201
+    then response is {
+        body: {
+            order_id: "scenario-order-201",
+            status: "created"
+        }
+    }
+
+scenario "validates http client response schema and constructor request"
+    given http_client.post("http://127.0.0.1:3737/stub/orders", anything) returns {
+        status: 201,
+        body: {
+            order_id: "schema-order-201",
+            status: "created",
+            ignored: "stripped by reply schema"
+        },
+        headers: {
+            content_type: "application/json"
+        }
+    }
+
+    when POST "/http-client/schema-contract" with {
+        item: "scenario-book",
+        quantity: 2
+    }
+
+    then status 201
+    then response is {
+        body: {
+            order_id: "schema-order-201",
+            status: "created"
+        }
+    }
+
+scenario "supports GET scenario with path params"
+    given http_client.get("http://127.0.0.1:3737/stub/user/42") returns {
+        status: 200,
+        body: {
+            id: 42,
+            name: "Scenario Path",
+            email: "path@example.com"
+        },
+        headers: {
+            content_type: "application/json"
+        }
+    }
+
+    when GET "/http-client/get/42"
+
+    then status 200
+    then response is {
+        body: {
+            id: 42,
+            name: "Scenario Path"
+        }
+    }
+
+scenario "supports PUT scenario with path params and body"
+    given http_client.put("http://127.0.0.1:3737/stub/items/7", anything) returns {
+        status: 200,
+        body: {
+            id: 7,
+            updated: true
+        },
+        headers: {
+            content_type: "application/json"
+        }
+    }
+
+    when PUT "/http-client/put/7" with {
+        name: "scenario-updated"
+    }
+
+    then status 200
+    then response is {
+        body: {
+            id: 7,
+            updated: true
+        }
+    }
+
+scenario "supports PATCH scenario with path params and body"
+    given http_client.patch("http://127.0.0.1:3737/stub/items/9", anything) returns {
+        status: 200,
+        body: {
+            id: 9,
+            patched: true
+        },
+        headers: {
+            content_type: "application/json"
+        }
+    }
+
+    when PATCH "/http-client/patch/9" with {
+        active: false
+    }
+
+    then status 200
+    then response is {
+        body: {
+            id: 9,
+            patched: true
+        }
+    }
+
+scenario "supports DELETE scenario with path params"
+    given http_client.delete("http://127.0.0.1:3737/stub/items/11") returns {
+        status: 200,
+        body: {
+            id: 11,
+            deleted: true
+        },
+        headers: {
+            content_type: "application/json"
+        }
+    }
+
+    when DELETE "/http-client/delete/11"
+
+    then status 200
+    then response is {
+        body: {
+            id: 11,
+            deleted: true
+        }
+    }
+
+scenario "supports request headers in scenario tests"
+    when GET "/bindings/headers" and headers {
+        accept: "application/json"
+    }
+
+    then status 200
+    then response is {
+        body: {
+            accept: "application/json"
+        }
+    }
+
+scenario "supports query params in scenario tests"
+    when GET "/bindings/query?term=scenario&limit=7"
+
+    then status 200
+    then response is {
+        body: {
+            term: "scenario",
+            limit: "7"
+        }
+    }

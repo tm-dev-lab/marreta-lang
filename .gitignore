@@ -1,0 +1,10 @@
+/target
+.venv/
+.claude/
+
+# Raw benchmark output and build artifacts are never committed (docs/ layout, spec 055).
+docs/benchmarks/**/results/
+docs/benchmarks/**/.build/
+# Node tooling (VS Code extension) and build artifacts.
+**/node_modules/
+*.vsix

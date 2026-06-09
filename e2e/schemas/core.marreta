@@ -1,0 +1,19 @@
+export schema NewUser
+    name: string
+    age: integer
+    active: boolean
+    email?: string
+
+export schema DecimalInput
+    amount: decimal
+
+export schema Address
+    city: string
+
+export schema RichOrder
+    customer: string
+    amount: decimal
+    status: enum ["pending", "paid"]
+    tags: list of string
+    created_at: instant
+    address: Address

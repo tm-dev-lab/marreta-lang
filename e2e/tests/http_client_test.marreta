@@ -1,0 +1,46 @@
+# http_client routes self-call the echo endpoints; in `marreta test` those calls
+# are mocked, so the scenario asserts the route's own composition of the responses.
+scenario "http_client drives all five verbs"
+    given http_client.get("http://127.0.0.1:8080/echo/get") returns { status: 200, body: { verb: "GET" } }
+    given http_client.post("http://127.0.0.1:8080/echo/post", anything) returns { status: 200, body: { verb: "POST" } }
+    given http_client.put("http://127.0.0.1:8080/echo/put", anything) returns { status: 200, body: { verb: "PUT" } }
+    given http_client.patch("http://127.0.0.1:8080/echo/patch", anything) returns { status: 200, body: { verb: "PATCH" } }
+    given http_client.delete("http://127.0.0.1:8080/echo/delete") returns { status: 200, body: { verb: "DELETE" } }
+
+    when GET "/httpclient/verbs"
+
+    then status 200
+    then response is { body: {
+        get: "GET",
+        post: "POST",
+        put: "PUT",
+        patch: "PATCH",
+        delete: "DELETE",
+        get_status: 200
+    } }
+
+# the echo endpoints themselves (the self-call targets)
+scenario "echo get"
+    when GET "/echo/get"
+    then status 200
+    then response is { body: { verb: "GET" } }
+
+scenario "echo post echoes the value"
+    when POST "/echo/post" with { value: 7 }
+    then status 200
+    then response is { body: { verb: "POST", value: 7 } }
+
+scenario "echo put echoes the value"
+    when PUT "/echo/put" with { value: 8 }
+    then status 200
+    then response is { body: { verb: "PUT", value: 8 } }
+
+scenario "echo patch echoes the value"
+    when PATCH "/echo/patch" with { value: 9 }
+    then status 200
+    then response is { body: { verb: "PATCH", value: 9 } }
+
+scenario "echo delete"
+    when DELETE "/echo/delete"
+    then status 200
+    then response is { body: { verb: "DELETE" } }

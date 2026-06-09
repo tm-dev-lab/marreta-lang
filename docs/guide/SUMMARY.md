@@ -1,0 +1,68 @@
+# Summary
+
+## Tutorials
+
+- [Quickstart](tutorials/quickstart.md)
+- [Save and read your first data](tutorials/save-and-read-data.md)
+- [Build a relational API with migrations](tutorials/relational-api-with-migrations.md)
+- [Make it event-driven](tutorials/make-it-event-driven.md)
+- [Run Marreta in a container](tutorials/run-in-a-container.md)
+
+## How-to
+
+- [Configure environment variables](how-to/configure-environment.md)
+- [Persist data with local services](how-to/use-local-services.md)
+- [Evolve your database with migrations](how-to/migrations.md)
+- [Use transactions](how-to/use-transactions.md)
+- [Validate a request payload](how-to/validate-a-payload.md)
+- [Shape a response](how-to/shape-a-response.md)
+- [Test your API](how-to/test-your-api.md)
+- [Cache expensive work](how-to/use-cache.md)
+- [Call an external API](how-to/call-an-external-api.md)
+- [Process work asynchronously with a queue](how-to/async-work-with-a-queue.md)
+- [Secure your API](how-to/secure-your-api.md)
+- [Handle errors](how-to/handle-errors.md)
+- [Use feature flags](how-to/use-feature-flags.md)
+- [Inspect the OpenAPI docs](how-to/openapi-docs.md)
+- [Observe logs and traces](how-to/observe-logs.md)
+
+## Reference
+
+- [Keywords](reference/keywords.md)
+- [Control flow and operators](reference/control-flow.md)
+- [Conventions](reference/conventions.md)
+- [Configuration](reference/configuration.md)
+- [CLI](reference/cli.md)
+- [Error codes](reference/errors.md)
+- [Namespaces](reference/namespaces.md)
+  - [base64](reference/namespaces/base64.md)
+  - [cache](reference/namespaces/cache.md)
+  - [db](reference/namespaces/db.md)
+  - [doc](reference/namespaces/doc.md)
+  - [feature](reference/namespaces/feature.md)
+  - [fs](reference/namespaces/fs.md)
+  - [http_client](reference/namespaces/http_client.md)
+  - [json](reference/namespaces/json.md)
+  - [log](reference/namespaces/log.md)
+  - [math](reference/namespaces/math.md)
+  - [queue](reference/namespaces/queue.md)
+  - [time](reference/namespaces/time.md)
+  - [topic](reference/namespaces/topic.md)
+  - [uuid](reference/namespaces/uuid.md)
+- [Types](reference/types.md)
+  - [string](reference/types/string.md)
+  - [integer](reference/types/integer.md)
+  - [float](reference/types/float.md)
+  - [decimal](reference/types/decimal.md)
+  - [boolean](reference/types/boolean.md)
+  - [list](reference/types/list.md)
+  - [map](reference/types/map.md)
+  - [Temporal types](reference/types/temporal.md)
+
+## Concepts
+
+- [Namespaces](concepts/namespaces.md)
+- [Providers](concepts/providers.md)
+- [Schemas](concepts/schemas.md)
+- [Pipelines](concepts/pipelines.md)
+- [Broadcast](concepts/broadcast.md)

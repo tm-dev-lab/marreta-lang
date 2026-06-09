@@ -1,0 +1,9 @@
+# Returns the discount rate for an order based on its coupon code.
+# Task contract (v0.4.0): validates that `order` conforms to order_payload before
+# the body runs — TypeError (HTTP 500) if called with a wrong argument shape.
+export task get_coupon_rate(order as OrderPayload)
+    coupon = order.coupon or "NONE"
+    match coupon
+        "SAVE10" -> 0.10
+        "SAVE20" -> 0.20
+        fallback  -> 0.0

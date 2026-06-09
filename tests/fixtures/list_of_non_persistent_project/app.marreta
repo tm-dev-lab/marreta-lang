@@ -1,0 +1,5 @@
+project_name = "list-of-non-persistent-project"
+project_version = "1.0.0"
+
+route GET "/health"
+    reply 200, { ok: true }

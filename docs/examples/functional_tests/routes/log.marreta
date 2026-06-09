@@ -1,0 +1,104 @@
+# -- Section 34 -- Log namespace (v0.15) --------------------------------------
+#
+# Covers 032_LOG_NAMESPACE.md:
+#   - log.info / log.warn / log.error / log.debug
+#   - pass-through semantics
+#   - integration with pipelines and broadcasts
+#   - integration with fs, json, base64, and queue
+#   - rescue on unsupported runtime values
+# -------------------------------------------------------------------------------
+
+route POST "/log/process" take payload
+    request = payload >> log.info()
+    pretty = request.document >> log.debug() >> json.pretty()
+    pretty >> fs.write(request.path)
+
+    reply 200, {
+        customer: request.document.customer,
+        encoded: request.message >> base64.encode(),
+        reread: request.path >> fs.read()
+    }
+
+route POST "/log/interpolation" take payload
+    log.info("loading order #{payload.order_id} for #{payload.customer}")
+
+    reply 200, {
+        ok: true,
+        order_id: payload.order_id,
+        customer: payload.customer
+    }
+
+route POST "/log/retry-warning" take payload
+    {
+        event: "provider.retrying",
+        retries: payload.retries,
+        provider: payload.provider
+    } >> log.warn()
+
+    reply 200, {
+        status: "degraded",
+        retries: payload.retries,
+        provider: payload.provider
+    }
+
+route POST "/log/failure-report" take payload
+    {
+        event: "payment.failed",
+        order_id: payload.order_id,
+        reason: payload.reason
+    } >> log.error()
+
+    reply 200, {
+        accepted: true,
+        order_id: payload.order_id,
+        status: "recorded"
+    }
+
+route POST "/log/pipeline" take payload
+    encoded = payload.message >> log.info() >> base64.encode()
+    pretty = payload.document >> log.debug() >> json.pretty()
+    pretty >> fs.write(payload.path)
+    reread = payload.path >> fs.read()
+
+    reply 200, {
+        encoded: encoded,
+        reread: reread
+    }
+
+route POST "/log/broadcast" take payload
+    results = payload *>>
+        -> log.info()
+        -> log.warn()
+
+    reply 200, {
+        first: results.first(),
+        second: results.last()
+    }
+
+route POST "/log/rescue"
+    result = log.info(db) rescue {
+        code: error.code,
+        message: error.message
+    }
+
+    reply 200, result
+
+route POST "/log/queue-push" take payload
+    event = {
+        kind: payload.kind,
+        message: payload.message
+    } >> log.info()
+
+    queue.push "ft.log", event
+
+    reply 202, {
+        queued: true,
+        kind: event.kind
+    }
+
+route GET "/log/queue-last"
+    reply 200, cache.get("ft:log:last")
+
+on queue "ft.log" take msg
+    msg >> log.info()
+    cache.set("ft:log:last", msg, ttl: 60)

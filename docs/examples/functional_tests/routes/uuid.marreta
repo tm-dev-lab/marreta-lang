@@ -1,0 +1,50 @@
+# -- Section 34 -- UUID namespace (v0.17) -------------------------------------
+#
+# Covers 034_UUID_NAMESPACE.md:
+#   - uuid.v4 / uuid.v7
+#   - canonical lowercase hyphenated string output
+#   - v4 for opaque/public IDs
+#   - v7 for ordered/persistent IDs
+#   - integration with HTTP payloads, queue event IDs, and cache key interpolation
+# -------------------------------------------------------------------------------
+
+route POST "/uuid/generate"
+    public_id = uuid.v4()
+    record_id = uuid.v7()
+    first = uuid.v7()
+    second = uuid.v7()
+
+    reply 200, {
+        public_id: public_id,
+        record_id: record_id,
+        first: first,
+        second: second,
+        ordered: first < second,
+        public_length: public_id.length(),
+        record_length: record_id.length()
+    }
+
+route POST "/uuid/cache-key" take payload
+    key = "token:#{uuid.v4()}"
+    payload >> cache.set(key, ttl: 60)
+    cached = cache.get(key)
+
+    reply 200, {
+        key: key,
+        cached: cached
+    }
+
+route POST "/uuid/queue-push" take payload
+    event = {
+        event_id: uuid.v7(),
+        kind: payload.kind
+    }
+
+    queue.push "ft.uuid", event
+    reply 202, event
+
+route GET "/uuid/queue-last"
+    reply 200, cache.get("ft:uuid:last")
+
+on queue "ft.uuid" take msg
+    cache.set("ft:uuid:last", msg, ttl: 60)

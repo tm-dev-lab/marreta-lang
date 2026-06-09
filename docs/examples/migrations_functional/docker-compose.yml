@@ -1,0 +1,44 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: marreta_migrations
+      POSTGRES_USER: marreta
+      POSTGRES_PASSWORD: marreta
+    ports:
+      - "5435:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U marreta -d marreta_migrations"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+
+  app:
+    image: ${MARRETA_IMAGE:-marreta-lang:dev}
+    # Run as the invoking host user so migration files written into the
+    # bind-mounted project stay owned by the host (this suite rewrites them).
+    user: "${MARRETA_UID:-0}:${MARRETA_GID:-0}"
+    environment:
+      HOME: /tmp
+      MARRETA_DB_PROVIDER: postgres
+      MARRETA_DB_HOST: postgres
+      MARRETA_DB_PORT: 5432
+      MARRETA_DB_NAME: marreta_migrations
+      MARRETA_DB_USER: marreta
+      MARRETA_DB_PASSWORD: marreta
+      MARRETA_PORT: 3738
+    volumes:
+      - ${MARRETA_MIGRATIONS_PROJECT_DIR:-/tmp}:/workspace/project
+    working_dir: /workspace/project
+    ports:
+      - "3738:3738"
+    command: ["serve", "--port", "3738"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:3738/_health >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s

@@ -1,0 +1,9 @@
+scenario "unused given reports clearly"
+    given db.items.find(999) returns {
+        id: 999,
+        name: "unused"
+    }
+
+    when GET "/types/arithmetic"
+
+    then status 200

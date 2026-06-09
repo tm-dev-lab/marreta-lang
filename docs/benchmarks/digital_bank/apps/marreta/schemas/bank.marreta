@@ -1,0 +1,10 @@
+export schema CreateAccount
+    owner: string
+
+export schema Amount
+    amount: integer
+
+export schema Transfer
+    from_account: string
+    to_account: string
+    amount: integer

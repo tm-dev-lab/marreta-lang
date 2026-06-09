@@ -1,0 +1,27 @@
+scenario "publishes topic message through topic mock"
+    given topic.publish "ft.order.created", anything returns true
+
+    when POST "/queue/publish" with {
+        order_id: 11,
+        total: 120
+    }
+
+    then status 202
+    then response is {
+        body: {
+            published: true
+        }
+    }
+
+scenario "publishes typed topic message through topic mock"
+    given topic.publish "ft.order.updated", anything returns true
+
+    when POST "/queue/publish-constructor" with {}
+
+    then status 202
+    then response is {
+        body: {
+            published: true,
+            order_id: 42
+        }
+    }

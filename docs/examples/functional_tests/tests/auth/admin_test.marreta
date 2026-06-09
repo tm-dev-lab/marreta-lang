@@ -1,0 +1,13 @@
+scenario "authorizes jwt route through auth scenario mock"
+    given auth.scenario_auth returns {
+        sub: "user-123",
+        roles: ["admin"]
+    }
+    when GET "/auth/scenario-admin"
+    then status 200
+    then response is {
+        body: {
+            user_id: "user-123",
+            provider: "scenario_auth"
+        }
+    }

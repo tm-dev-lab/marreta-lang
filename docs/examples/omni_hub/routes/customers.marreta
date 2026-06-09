@@ -1,0 +1,8 @@
+route POST "/customers" take payload as CustomerCreatePayload
+    customer = db.customers.save(payload)
+    reply 201, customer
+
+route PATCH "/customers/:id/name" take payload as CustomerRenamePayload
+    updated = db.customers.update(params.id, { name: payload.name })
+    require updated else fail 404, "customer not found"
+    reply 200, updated

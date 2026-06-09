@@ -1,0 +1,402 @@
+# ═════════════════════════════════════════════════════════════════════════════
+# SECTION 25 — Doc module — MongoDB  (requires doc provider)
+#
+# doc.<collection>.<op>() operations bypass the pipeline and map directly to
+# MongoDB driver commands with zero ceremony (auto ObjectId conversions).
+#
+#   doc.COLL.save(map)          insert document, returns map with generated _id
+#   doc.COLL.find(id)           find one by _id (string auto-cast to ObjectId)
+#   doc.COLL.find_all()         return all documents in collection
+#   doc.COLL.update(id, map)    partial update via $set, returns updated doc
+#   doc.COLL.delete(id)         delete by _id, returns boolean
+# ═════════════════════════════════════════════════════════════════════════════
+
+route POST "/docs/items" take payload
+    row = doc.items.save(payload)
+    reply 201, row
+
+route POST "/docs/items/constructor"
+    item = ItemPayload { name: "constructor-doc", active: true }
+    row = doc.items.save(item)
+    reply 201 as ItemResponse, { id: 1, name: row.name, active: row.active }
+
+route GET "/docs/items/:id"
+    row = doc.items.find(params.id)
+    require row else fail 404, "not found"
+    reply 200, row
+
+route GET "/docs/items"
+    rows = doc.items.find_all()
+    reply 200, { items: rows }
+
+route PUT "/docs/items/:id" take payload
+    updated = doc.items.update(params.id, payload)
+    reply 200, updated
+
+route DELETE "/docs/items/:id"
+    deleted = doc.items.delete(params.id)
+    require deleted else fail 404, "not found"
+    reply 200, { deleted: true }
+
+# Nested document — save a person with an embedded address map
+route POST "/docs/persons" take payload
+    row = doc.persons.save(payload)
+    reply 201, row
+
+route GET "/docs/persons/:id"
+    row = doc.persons.find(params.id)
+    require row else fail 404, "not found"
+    reply 200, row
+
+route POST "/time/doc_transport" take payload as TimePayload
+    saved = doc.time_examples.save(payload)
+    loaded = doc.time_examples.find(saved._id)
+
+    reply 200, {
+        loaded_created_at: loaded.created_at,
+        loaded_billing_date: loaded.billing_date,
+        loaded_opens_at: loaded.opens_at,
+        loaded_sla: loaded.sla,
+        loaded_window_start: loaded.business_window.start
+    }
+
+route POST "/docs/contract-types" take payload as ContractTypesPayload
+    saved = doc.contract_type_examples.save(payload)
+    loaded = doc.contract_type_examples.find(saved._id)
+    require loaded else fail 500, "contract type document not found"
+
+    reply 201 as ContractTypesPayload, {
+        status: loaded.status,
+        amount: loaded.amount,
+        ignored: "stripped"
+    }
+
+# ── Section 25.2 — Pipeline Queries (Layer 2) ─────────────────────────────────
+#
+# doc.<collection> opens a DocQueryBuilder — a lazy, chainable MongoDB cursor.
+#
+# Accumulating steps (return DocQueryBuilder, no DB round-trip yet):
+#   >> where("col" == val)          equality filter (string field name required)
+#   >> where("col" != val)          inequality filter ($ne)
+#   >> where("col" > val)           comparison filter ($gt)
+#   >> where("col" >= val)          $gte
+#   >> where("col" < val)           $lt
+#   >> where("col" <= val)          $lte
+#   >> like("col", "pat")           regex filter, % → .*, _ → .  (case-insensitive)
+#   >> in("col", list)              $in filter
+#   >> pick(["a", "b"])             projection — only these fields returned
+#   >> order("col", "asc"|"desc")   sort direction
+#   >> limit(n)                     limit cursor
+#   >> offset(n)                    skip n documents
+#
+# Terminal steps (execute query, return Value):
+#   >> fetch_all    → list of maps
+#   >> fetch_one    → first map or null
+#   >> count        → integer
+#   >> exists       → boolean
+#   >> update(map)  → integer (documents modified)
+#   >> upsert(map)  → integer (modified or inserted)
+#   >> delete       → integer (documents deleted)
+
+# ── Seeder for Section 25.2 demos ─────────────────────────────────────────────
+# Inserts a fixed dataset into the `persons` collection for query demos.
+# Safe to call multiple times (idempotent via upsert on name field).
+route POST "/docs/persons/seed"
+    doc.persons >> where("name" == "Alice") >> upsert({ name: "Alice", age: 30, active: true,  score: 88, city: "SP", tags: ["admin", "user"] })
+    doc.persons >> where("name" == "Bob")   >> upsert({ name: "Bob",   age: 17, active: true,  score: 72, city: "RJ", tags: ["user"] })
+    doc.persons >> where("name" == "Carol") >> upsert({ name: "Carol", age: 25, active: false, score: 95, city: "SP", tags: ["user", "moderator"] })
+    doc.persons >> where("name" == "Dave")  >> upsert({ name: "Dave",  age: 40, active: true,  score: 60, city: "BH", tags: ["user"] })
+    doc.persons >> where("name" == "Eve")   >> upsert({ name: "Eve",   age: 22, active: true,  score: 81, city: "SP", tags: ["user"] })
+    reply 201, { seeded: true }
+
+# ── Basic fetch ────────────────────────────────────────────────────────────────
+
+route GET "/docs/pipeline/fetch"
+    rows = doc.items >> fetch_all
+    reply 200, { items: rows }
+
+# ── Equality and comparison filters ───────────────────────────────────────────
+
+route GET "/docs/pipeline/where"
+    # Equality filter — returns only active items
+    rows = doc.items >> where("active" == true) >> fetch_all
+    reply 200, { items: rows }
+
+route GET "/docs/q/comparison"
+    # Comparison operators — persons aged 18 or older, sorted by age
+    rows = doc.persons >> where("age" >= 18) >> order("age", "asc") >> fetch_all
+    reply 200, { items: rows }
+
+route GET "/docs/q/and"
+    # Multiple where steps combine with AND semantics
+    # Returns active adults with score above 70
+    rows = doc.persons
+    >> where("active" == true)
+    >> where("age" >= 18)
+    >> where("score" > 70)
+    >> order("score", "desc")
+    >> fetch_all
+    reply 200, { items: rows }
+
+route GET "/docs/q/ne"
+    # Inequality filter — persons not in SP
+    rows = doc.persons >> where("city" != "SP") >> order("name", "asc") >> fetch_all
+    reply 200, { items: rows }
+
+# ── Regex and $in ──────────────────────────────────────────────────────────────
+
+route GET "/docs/pipeline/complex"
+    # like + comparison + order + limit + offset + pick — all accumulators at once
+    rows = doc.items
+    >> like("name", "%test%")
+    >> where("age" > 18)
+    >> order("age", "desc")
+    >> limit(5)
+    >> offset(0)
+    >> pick(["_id", "name", "age", "active"])
+    >> fetch_all
+    reply 200, { items: rows }
+
+route GET "/docs/pipeline/in"
+    # $in filter — items with status A or B
+    rows = doc.items >> in("status", ["A", "B"]) >> fetch_all
+    reply 200, { items: rows }
+
+route GET "/docs/q/like/:pattern"
+    # like filter — persons whose name matches the pattern (% as wildcard)
+    rows = doc.persons >> like("name", params.pattern) >> fetch_all
+    reply 200, { items: rows }
+
+# ── Projection (pick) ──────────────────────────────────────────────────────────
+
+route GET "/docs/q/pick"
+    # Return only name, score, and city for active persons, ordered by score
+    rows = doc.persons
+    >> where("active" == true)
+    >> order("score", "desc")
+    >> pick(["name", "score", "city"])
+    >> fetch_all
+    reply 200, { items: rows }
+
+# ── Pagination ─────────────────────────────────────────────────────────────────
+
+route GET "/docs/q/page"
+    # Cursor-style pagination: returns items + total count in one response
+    # Query params: page (default 1), size (default 3)
+    total = doc.persons >> count
+    rows  = doc.persons >> order("name", "asc") >> limit(3) >> offset(0) >> fetch_all
+    reply 200, { items: rows, total: total, page: 1, size: 3 }
+
+# ── fetch_one ──────────────────────────────────────────────────────────────────
+
+route GET "/docs/q/top"
+    # fetch_one — returns the highest-scoring active person
+    row = doc.persons >> where("active" == true) >> order("score", "desc") >> fetch_one
+    require row else fail 404, "no active person found"
+    reply 200, row
+
+route GET "/docs/q/by-city/:city"
+    # Dynamic route param used directly in where filter
+    rows = doc.persons >> where("city" == params.city) >> order("name", "asc") >> fetch_all
+    reply 200, { city: params.city, items: rows }
+
+# ── Count, exists, upsert, bulk update, bulk delete ───────────────────────────
+
+route GET "/docs/pipeline/count"
+    n = doc.items >> count
+    reply 200, { count: n }
+
+route GET "/docs/q/count-active"
+    n = doc.persons >> where("active" == true) >> count
+    reply 200, { active: n }
+
+route GET "/docs/pipeline/exists/:name"
+    found = doc.items >> where("name" == params.name) >> exists
+    reply 200, { exists: found }
+
+route GET "/docs/q/exists/:name"
+    found = doc.persons >> where("name" == params.name) >> exists
+    reply 200, { exists: found }
+
+route POST "/docs/pipeline/upsert" take payload
+    n = doc.items >> where("name" == payload.name) >> upsert(payload)
+    reply 200, { upserted: n }
+
+route POST "/docs/pipeline/deactivate"
+    n = doc.items >> where("active" == true) >> update({ active: false })
+    reply 200, { updated: n }
+
+route DELETE "/docs/pipeline/inactive"
+    n = doc.items >> where("active" == false) >> delete
+    reply 200, { deleted: n }
+
+route POST "/docs/q/deactivate-city" take payload
+    # Bulk update: deactivate all persons in a given city
+    n = doc.persons >> where("city" == payload.city) >> update({ active: false })
+    reply 200, { updated: n }
+
+route POST "/docs/q/reactivate-all"
+    # Bulk update: reactivate all persons
+    n = doc.persons >> where("active" == false) >> update({ active: true })
+    reply 200, { updated: n }
+
+# ── Section 25.3 — Aggregation Pipeline (Layer 3) ─────────────────────────────
+#
+# Layer 3 extends doc.* pipelines with grouping and accumulator steps.
+# Aggregation activates when group_by or any accumulator step is used.
+
+route POST "/agg/seed"
+    # Idempotent seed: insert 4 sales documents per call
+    doc.sales.save({ product: "A", category: "electronics", amount: 100, in_stock: true })
+    doc.sales.save({ product: "B", category: "electronics", amount: 200, in_stock: false })
+    doc.sales.save({ product: "C", category: "clothing",    amount:  50, in_stock: true })
+    doc.sales.save({ product: "D", category: "clothing",    amount:  75, in_stock: true })
+    reply 201, { seeded: true }
+
+route GET "/agg/by-category"
+    # Group by category — sum amount and count docs per group, desc by total
+    result = doc.sales
+    >> group_by("category")
+    >> sum("amount", as: "total")
+    >> count(as: "items")
+    >> order("total", "desc")
+    >> fetch_all
+    reply 200, result
+
+route GET "/agg/totals"
+    # Global aggregation — no group_by, single result document with _id: null
+    result = doc.sales
+    >> sum("amount", as: "grand_total")
+    >> avg("amount", as: "avg_amount")
+    >> count(as: "total_items")
+    >> fetch_one
+    reply 200, result
+
+route GET "/agg/top-electronics"
+    # Pre-group filter + group_by + post-group order + limit
+    result = doc.sales
+    >> where("category" == "electronics")
+    >> group_by("product")
+    >> sum("amount", as: "revenue")
+    >> order("revenue", "desc")
+    >> limit(10)
+    >> fetch_all
+    reply 200, result
+
+route GET "/agg/min-max"
+    # min and max amount per category — useful for price range displays
+    result = doc.sales
+    >> group_by("category")
+    >> min("amount", as: "cheapest")
+    >> max("amount", as: "priciest")
+    >> count(as: "items")
+    >> fetch_all
+    reply 200, result
+
+route GET "/agg/global-stats"
+    # All 5 accumulator types in one global aggregation (no group_by)
+    result = doc.sales
+    >> sum("amount", as: "total")
+    >> avg("amount", as: "average")
+    >> min("amount", as: "min")
+    >> max("amount", as: "max")
+    >> count(as: "n")
+    >> fetch_one
+    reply 200, result
+
+route GET "/agg/in-stock"
+    # Pre-filter then aggregate — only in-stock products
+    result = doc.sales
+    >> where("in_stock" == true)
+    >> group_by("category")
+    >> sum("amount", as: "available_revenue")
+    >> count(as: "available_items")
+    >> order("available_revenue", "desc")
+    >> fetch_all
+    reply 200, result
+
+# ── Section 25.4 — Power Pipeline (Layer 4) ───────────────────────────────────
+#
+# doc.pipeline(collection, list) executes a raw MQL-equivalent pipeline.
+# Each stage is a single-key map; keys are plain Marreta identifiers (no $).
+
+route POST "/pipeline/seed"
+    # Seed orders_p collection for Layer 4 demos
+    doc.orders_p.save({ user_id: "u1", status: "paid",    amount: 100, region: "BR" })
+    doc.orders_p.save({ user_id: "u1", status: "paid",    amount: 200, region: "BR" })
+    doc.orders_p.save({ user_id: "u2", status: "pending", amount:  50, region: "US" })
+    doc.orders_p.save({ user_id: "u3", status: "paid",    amount: 150, region: "US" })
+    doc.orders_p.save({ user_id: "u3", status: "pending", amount:  80, region: "BR" })
+    reply 201, { seeded: true }
+
+route GET "/pipeline/match"
+    # $match — filter to only paid orders
+    result = doc.pipeline("orders_p", [
+        { match: { status: "paid" } }
+    ])
+    reply 200, result
+
+route GET "/pipeline/sort-limit"
+    # $sort + $limit — top 2 orders by amount descending
+    result = doc.pipeline("orders_p", [
+        { sort:  { amount: -1 } },
+        { limit: 2 }
+    ])
+    reply 200, result
+
+route GET "/pipeline/skip"
+    # $sort + $skip + $limit — second page (offset by 2)
+    result = doc.pipeline("orders_p", [
+        { sort:  { amount: -1 } },
+        { skip:  2 },
+        { limit: 2 }
+    ])
+    reply 200, result
+
+route GET "/pipeline/project"
+    # $project — include only status and amount fields (excludes _id and others)
+    result = doc.pipeline("orders_p", [
+        { project: { status: 1, amount: 1 } }
+    ])
+    reply 200, result
+
+route GET "/pipeline/add-fields"
+    # $addFields — compute a new field from an existing one
+    result = doc.pipeline("orders_p", [
+        { add_fields: { doubled: { sum: "$amount" } } }
+    ])
+    reply 200, result
+
+route GET "/pipeline/group"
+    # $group — group by status, sum amount, count orders
+    result = doc.pipeline("orders_p", [
+        { group: { by: "status", total: { sum: "$amount" }, n: { count: 1 } } }
+    ])
+    reply 200, result
+
+route GET "/pipeline/multi"
+    # Multi-stage: filter paid → group by user_id → sort by total desc
+    # Demonstrates chaining multiple stages in a single doc.pipeline call
+    result = doc.pipeline("orders_p", [
+        { match: { status: "paid" } },
+        { group: { by: "user_id", total: { sum: "$amount" }, orders: { count: 1 } } },
+        { sort:  { total: -1 } }
+    ])
+    reply 200, result
+
+route GET "/pipeline/region-totals"
+    # Group by region, sum and count — then sort
+    result = doc.pipeline("orders_p", [
+        { group: { by: "region", revenue: { sum: "$amount" }, n: { count: 1 } } },
+        { sort:  { revenue: -1 } }
+    ])
+    reply 200, result
+
+route GET "/pipeline/match-project"
+    # Combine match + project — paid orders keeping status and amount fields
+    # Note: MongoDB always includes _id in inclusion projections
+    result = doc.pipeline("orders_p", [
+        { match:   { status: "paid" } },
+        { project: { status: 1, amount: 1 } }
+    ])
+    reply 200, result

@@ -1,0 +1,16 @@
+scenario "json response carries a task return value"
+    when GET "/responses/json"
+    then status 200
+    then response is { body: { total: 100, ok: true } }
+
+scenario "html response is served"
+    when GET "/responses/html"
+    then status 200
+
+scenario "text response is served"
+    when GET "/responses/text"
+    then status 200
+
+scenario "fail returns the chosen status"
+    when GET "/responses/fail"
+    then status 418

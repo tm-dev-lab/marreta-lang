@@ -1,0 +1,12 @@
+scenario "encodes and decodes url-safe base64 from request body"
+    when POST "/base64/url-safe" with {
+        text: "???"
+    }
+
+    then status 200
+    then response is {
+        body: {
+            encoded: "Pz8_",
+            decoded: "???"
+        }
+    }

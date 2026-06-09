@@ -1,0 +1,125 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 31 — Iteration & accumulation (v0.11)
+# ═══════════════════════════════════════════════════════════════════════════
+
+route GET "/iteration/range/default"
+    reply 200, { values: range(5) }
+
+route GET "/iteration/range/bounds"
+    reply 200, { values: range(3, 6), empty: range(6, 3) }
+
+route GET "/iteration/reduce/sum"
+    total = [1, 2, 3, 4, 5] >> reduce(0) acc, item
+        acc + item
+    reply 200, { total: total }
+
+route GET "/iteration/reduce/empty"
+    result = [] >> reduce("seed") acc, item
+        acc + item
+    reply 200, { result: result }
+
+route GET "/iteration/while/counter"
+    counter = 0
+    while counter < 4
+        counter = counter + 1
+    reply 200, { counter: counter }
+
+route GET "/iteration/while/limit"
+    counter = 0
+    while true
+        counter = counter + 1
+    reply 200, { counter: counter }
+
+route GET "/iteration/recursion/factorial/:n"
+    result = factorial(params.n)
+    reply 200, { result: result }
+
+route GET "/iteration/recursion/mutual/:n"
+    reply 200, { even: is_even(params.n) }
+
+route GET "/iteration/list-methods"
+    notas = [7.5, 8.0, 6.5, 9.0, 7.0]
+    pares = ["Ana", "Joao"].zip([30, 25])
+    reply 200, {
+        sum: [1, 2, 3, 4, 5].sum(),
+        mean: notas.mean(),
+        median: notas.median(),
+        std_dev: notas.std_dev(),
+        zipped: pares
+    }
+
+route GET "/iteration/list-methods/empty"
+    empty = []
+    reply 200, {
+        mean: empty.mean(),
+        median: empty.median(),
+        std_dev: empty.std_dev()
+    }
+
+route GET "/iteration/zip/error"
+    ["Ana"].zip([1, 2])
+    reply 200, { ok: true }
+
+route GET "/iteration/conversions"
+    reply 200, {
+        int_value: "25".to_integer(),
+        int_fallback: "abc".to_integer(),
+        float_value: "19.90".to_float(),
+        float_fallback: "abc".to_float(),
+        stringified: 42.to_string(),
+        bool_null: null.to_boolean(),
+        bool_text: "hello".to_boolean()
+    }
+
+route GET "/iteration/time/windows"
+    windows = [
+        time.interval(time.date("2026-04-27"), time.date("2026-04-30")),
+        time.interval(time.date("2026-05-01"), time.date("2026-05-03"))
+    ]
+
+    days = windows >> map item
+        keep item.duration.total_days
+
+    total = days >> reduce(0) acc, item
+        acc + item
+
+    reply 200, {
+        days: days,
+        total_days: total
+    }
+
+route GET "/iteration/math/reduce"
+    values = [1.2, 7.9, 3.4]
+
+    peak = values >> reduce(0) acc, item
+        math.max(acc, item)
+
+    reply 200, {
+        peak: peak,
+        rounded_peak: math.round(peak, places: 1),
+        bounded_peak: math.clamp(peak, min: 0, max: 5)
+    }
+
+private_multiplier = 3
+
+schema PrivateIterationPayload
+    name: string
+    qty: integer
+
+route POST "/iteration/private/schema" take payload as PrivateIterationPayload
+    reply 201, { name: payload.name, qty: payload.qty, factor: private_multiplier }
+
+task factorial(n)
+    match n <= 1
+        true -> 1
+        fallback -> n * factorial(n - 1)
+
+task is_even(n)
+    match n == 0
+        true -> true
+        fallback -> is_odd(n - 1)
+
+task is_odd(n)
+    match n == 0
+        true -> false
+        fallback -> is_even(n - 1)

@@ -1,0 +1,90 @@
+name: Install Validation
+
+# Manual only. Runs the checked-out install.sh against a published release tag on
+# each target and asserts the installed binary reports the expected version. This
+# validates the installer itself (host detection, download, install, verify) the
+# same way the smoke and e2e suites validate the binary. The script downloads the
+# release asset itself, so there is no separate download step.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to install and verify (e.g. v0.2.0)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x86_64
+            os: ubuntu-latest
+          - name: Linux arm64
+            os: ubuntu-24.04-arm
+          # The x86_64 binary runs on the arm64 runner under Rosetta 2, so the
+          # installer's x86_64 branch is exercised via MARRETA_TARGET.
+          - name: macOS x86_64 (Rosetta)
+            os: macos-latest
+            rosetta: true
+            target: marreta-macos-x86_64
+          - name: macOS arm64
+            os: macos-latest
+          # Windows installs the Linux x86_64 build through WSL.
+          - name: Windows (WSL)
+            os: windows-latest
+            wsl: true
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag }}
+
+      # ── Native runners: Linux and macOS ──────────────────────────────────
+      - name: Ensure Rosetta 2 (run the x86_64 binary on the arm64 runner)
+        if: ${{ matrix.rosetta }}
+        run: softwareupdate --install-rosetta --agree-to-license
+
+      - name: Install and verify
+        if: ${{ !matrix.wsl }}
+        env:
+          MARRETA_VERSION: ${{ inputs.tag }}
+          MARRETA_INSTALL_DIR: ${{ runner.temp }}/marreta-bin
+          MARRETA_TARGET: ${{ matrix.target }}
+        run: |
+          sh install.sh
+          out="$("$MARRETA_INSTALL_DIR/marreta" --version)"
+          echo "$out"
+          expected="${MARRETA_VERSION#v}"
+          case "$out" in
+            *"$expected"*) echo "version matches $expected" ;;
+            *) echo "version mismatch: expected '$expected' in: $out" >&2; exit 1 ;;
+          esac
+
+      # ── Windows, exercised through WSL (installs the Linux x86_64 build) ──
+      - name: Set up WSL (Ubuntu)
+        if: ${{ matrix.wsl }}
+        uses: Vampire/setup-wsl@v3
+        with:
+          distribution: Ubuntu-24.04
+
+      - name: Install and verify (inside WSL)
+        if: ${{ matrix.wsl }}
+        shell: wsl-bash {0}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl
+          export MARRETA_VERSION="${{ inputs.tag }}"
+          export MARRETA_INSTALL_DIR="$HOME/marreta-bin"
+          sh install.sh
+          out="$("$MARRETA_INSTALL_DIR/marreta" --version)"
+          echo "$out"
+          expected="${MARRETA_VERSION#v}"
+          case "$out" in
+            *"$expected"*) echo "version matches $expected" ;;
+            *) echo "version mismatch: expected '$expected' in: $out" >&2; exit 1 ;;
+          esac

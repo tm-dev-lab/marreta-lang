@@ -1,0 +1,32 @@
+# echo routes the self-calls target (one per verb)
+route GET "/echo/get"
+    reply 200, { verb: "GET" }
+
+route POST "/echo/post" take payload
+    reply 200, { verb: "POST", value: payload.value }
+
+route PUT "/echo/put" take payload
+    reply 200, { verb: "PUT", value: payload.value }
+
+route PATCH "/echo/patch" take payload
+    reply 200, { verb: "PATCH", value: payload.value }
+
+route DELETE "/echo/delete"
+    reply 200, { verb: "DELETE" }
+
+# http_client over localhost (no external service): all five verbs
+route GET "/httpclient/verbs"
+    g = http_client.get("http://127.0.0.1:8080/echo/get")
+    p = http_client.post("http://127.0.0.1:8080/echo/post", { value: 1 })
+    u = http_client.put("http://127.0.0.1:8080/echo/put", { value: 2 })
+    a = http_client.patch("http://127.0.0.1:8080/echo/patch", { value: 3 })
+    d = http_client.delete("http://127.0.0.1:8080/echo/delete")
+
+    reply 200, {
+        get: g.body.verb,
+        post: p.body.verb,
+        put: u.body.verb,
+        patch: a.body.verb,
+        delete: d.body.verb,
+        get_status: g.status
+    }

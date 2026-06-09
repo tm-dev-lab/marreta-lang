@@ -1,0 +1,18 @@
+scenario "process route keeps log taps transparent"
+    when POST "/log/process" with {
+        message: "payload:text",
+        path: "/tmp/marreta-log-scenario.json",
+        document: {
+            customer: "Ana",
+            items: [1, 2]
+        }
+    }
+
+    then status 200
+    then response is {
+        body: {
+            customer: "Ana",
+            encoded: "cGF5bG9hZDp0ZXh0",
+            reread: anything
+        }
+    }

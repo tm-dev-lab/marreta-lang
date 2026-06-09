@@ -1,0 +1,108 @@
+route POST "/inventory/seed" take payload as SeedProductRequest
+    db.reservations >> delete
+    db.products >> delete
+    doc.inventory_events >> delete
+    cache.delete(inventory.stock_key(payload.sku))
+    cache.delete(inventory.audit_key("inventory.reserved", payload.sku))
+    cache.delete(inventory.audit_key("inventory.increased", payload.sku))
+    cache.delete(inventory.audit_key("inventory.cancelled", payload.sku))
+    cache.delete(inventory.audit_key("inventory.low_stock", payload.sku))
+
+    product = db.products.save({
+        sku: payload.sku,
+        name: payload.name,
+        initial_stock: payload.initial_stock,
+        current_stock: payload.initial_stock,
+        reserved_stock: 0,
+        low_stock_threshold: payload.low_stock_threshold
+    })
+
+    cache.set(inventory.stock_key(payload.sku), payload.initial_stock)
+
+    reply 201, {
+        seeded: true,
+        sku: product.sku,
+        stock: product.current_stock,
+        threshold: product.low_stock_threshold
+    }
+
+route GET "/inventory/:sku"
+    product = db.products >> where(sku: params.sku) >> fetch_one
+    require product else fail 404, "product not found"
+
+    cached = cache.get(inventory.stock_key(params.sku))
+    stock = cached or product.current_stock
+
+    reply 200, {
+        sku: params.sku,
+        stock: stock,
+        source: "cache"
+    }
+
+route POST "/inventory/reserve" take payload as ReserveRequest
+    product = db.products >> where(sku: payload.sku) >> fetch_one
+    require product else fail 404, "product not found"
+
+    cached = cache.get(inventory.stock_key(payload.sku))
+    available = cached or product.current_stock
+
+    if available < payload.quantity
+        reply 200, {
+            reserved: false,
+            sku: payload.sku,
+            available: available,
+            requested: payload.quantity
+        }
+
+    stock_after = product.current_stock - payload.quantity
+    reserved_after = product.reserved_stock + payload.quantity
+
+    transaction
+        db.products.update(product.id, {
+            current_stock: stock_after,
+            reserved_stock: reserved_after
+        })
+        db.reservations.save({
+            order_id: payload.order_id,
+            sku: payload.sku,
+            quantity: payload.quantity,
+            status: "active"
+        })
+
+    cache.set(inventory.stock_key(payload.sku), stock_after)
+
+    event = inventory.stock_event("order_reserved", payload.sku, payload.quantity, stock_after, payload.order_id, null, false)
+    doc.inventory_events.save(event)
+    topic.publish "inventory.reserved", {
+        event_type: "inventory.reserved",
+        order_id: payload.order_id,
+        sku: payload.sku,
+        quantity: payload.quantity,
+        stock_after: stock_after
+    }
+
+    if stock_after <= product.low_stock_threshold
+        low_event = inventory.stock_event("low_stock_detected", payload.sku, 0, stock_after, payload.order_id, null, true)
+        doc.inventory_events.save(low_event)
+        topic.publish "inventory.low_stock", {
+            event_type: "inventory.low_stock",
+            sku: payload.sku,
+            stock_after: stock_after,
+            threshold: product.low_stock_threshold
+        }
+
+    reply 200, {
+        reserved: true,
+        order_id: payload.order_id,
+        sku: payload.sku,
+        quantity: payload.quantity,
+        stock_after: stock_after
+    }
+
+route POST "/inventory/shipments" take payload as ShipmentMessage
+    queue.push "incoming_shipment" as ShipmentMessage, payload
+    reply 202, { queued: true, shipment_id: payload.shipment_id, sku: payload.sku }
+
+route POST "/inventory/cancellations" take payload as CancellationMessage
+    queue.push "order_cancelled" as CancellationMessage, payload
+    reply 202, { queued: true, order_id: payload.order_id }

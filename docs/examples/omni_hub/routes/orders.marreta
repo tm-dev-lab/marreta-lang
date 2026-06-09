@@ -1,0 +1,70 @@
+route POST "/orders" take payload as ServiceOrderCreatePayload
+    require payload.total_amount > 0 else fail 400, "total_amount must be positive"
+
+    customer = db.customers.find(payload.customer_id)
+    require customer else fail 404, "customer not found"
+
+    transaction
+        order = db.orders.save({
+            customer_id: payload.customer_id,
+            description: payload.description,
+            total_amount: payload.total_amount,
+            status: "OPEN",
+            created_at: time.now()
+        })
+
+    event = builders.build_order_created_event(order, customer)
+    topic.publish "order_created" as OrderCreatedEvent, event
+    cache.delete(builders.order_cache_key(order.id))
+
+    reply 201 as OrderStatusResponse, {
+        id: order.id,
+        status: order.status,
+        created_at: order.created_at,
+        completed_at: order.completed_at
+    }
+
+route GET "/orders/:id"
+    key = builders.order_cache_key(params.id)
+    cached = cache.get(key)
+    if cached
+        print("cache hit for #{key}")
+        reply 200 as OrderDetails, cached
+    else
+        details = builders.load_order_details(params.id)
+        reply 200 as OrderDetails, details
+
+route PATCH "/orders/:id/complete"
+    order = db.orders.find(params.id)
+    require order else fail 404, "order not found"
+
+    customer = order.customer >> fetch
+    require customer else fail 404, "customer not found"
+
+    updated = db.orders.update(params.id, {
+        status: "CLOSED",
+        completed_at: time.now()
+    })
+    snapshot = builders.build_audit_snapshot(updated, customer)
+    doc.order_audits.save(snapshot)
+
+    billing = builders.build_billing_command(updated, customer)
+    queue.push "process_billing" as BillingCommand, billing
+
+    cache.delete(builders.order_cache_key(params.id))
+
+    reply 200 as OrderStatusResponse, {
+        id: updated.id,
+        status: updated.status,
+        created_at: updated.created_at,
+        completed_at: updated.completed_at
+    }
+
+route GET "/audits/orders/:id"
+    row = doc.order_audits >> where("order_id" == params.id) >> fetch_one
+    require row else fail 404, "audit snapshot not found"
+    reply 200, row
+
+on topic "order_created" take event as OrderCreatedEvent
+    cache.set(builders.order_created_topic_key(event.order_id), true, ttl: 300)
+    print("topic order_created received order_id=#{event.order_id}")

@@ -1,0 +1,9 @@
+scenario "reads arithmetic route"
+    when GET "/types/arithmetic"
+    then status 200
+    then response is {
+        body: {
+            sum: 13,
+            quotient: 3
+        }
+    }

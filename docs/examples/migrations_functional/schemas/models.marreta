@@ -1,0 +1,22 @@
+schema Address
+    db: addresses
+
+    id: integer
+    city: string
+
+schema User
+    db: users
+
+    id: integer
+    name: string
+    email: string
+    active?: boolean
+    address?: Address
+    orders: list of Order
+
+schema Order
+    db: orders
+
+    id: integer
+    total: float
+    customer: User

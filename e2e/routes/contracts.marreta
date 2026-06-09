@@ -1,0 +1,16 @@
+# schema validation: valid input keeps shape, bad input yields 422
+route POST "/contracts/users" take payload as NewUser
+    reply 201, {
+        name: payload.name,
+        age: payload.age,
+        active: payload.active
+    }
+
+# rich schema: enum, decimal, typed list, instant, nested reference
+route POST "/contracts/order" take payload as RichOrder
+    reply 201, {
+        customer: payload.customer,
+        status: payload.status,
+        city: payload.address.city,
+        first_tag: payload.tags.first()
+    }

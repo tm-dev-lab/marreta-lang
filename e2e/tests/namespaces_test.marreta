@@ -1,0 +1,38 @@
+scenario "math namespace"
+    when GET "/ns/math"
+    then status 200
+    then response is { body: { abs: 4, ceil: 3, floor: 2, round: 3.14, min: 3, max: 9, clamp: 10 } }
+
+scenario "json namespace parses and re-serializes"
+    when POST "/ns/json" with { name: "marreta" }
+    then status 200
+    then response is { body: { name: "marreta", pretty_has_newline: true } }
+
+scenario "base64 namespace round-trips standard and url-safe"
+    when GET "/ns/base64"
+    then status 200
+    then response is { body: { standard: "bWFycmV0YQ==", decoded: "marreta", url_decoded: "marreta" } }
+
+scenario "time namespace formats and checks an interval"
+    when GET "/ns/time"
+    then status 200
+    then response is { body: { formatted: "27/04/2026", contains: true } }
+
+scenario "fs namespace writes, appends, reads, and deletes"
+    when GET "/ns/fs"
+    then status 200
+    then response is { body: { contents: "hammered", existed: true, deleted: true, gone: false } }
+
+scenario "feature flags read from the environment"
+    when GET "/ns/feature"
+    then status 200
+    then response is { body: { beta: true, missing: false } }
+
+scenario "uuid namespace responds"
+    when GET "/ns/uuid"
+    then status 200
+
+scenario "log namespace passes through"
+    when GET "/ns/log"
+    then status 200
+    then response is { body: { logged: true } }

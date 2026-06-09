@@ -1,0 +1,24 @@
+# ═════════════════════════════════════════════════════════════════════════════
+# SECTION 28 — Schema relation contracts (Spec 062)
+#
+# A reference to a persistent (`db:`) schema is a foreign-key relation, not an
+# embedded value, so the validator lets it pass instead of recursing. This lets a
+# persistent schema work as an API contract even when it participates in a relation
+# cycle (DbUser <-> DbOrder), and a value schema can reference a persistent one.
+# Only the entity's own scalar fields are validated; relation fields are let through.
+# ═════════════════════════════════════════════════════════════════════════════
+
+# Persistent schema (in the DbUser <-> DbOrder relation cycle) as an API contract.
+# Validates id/name; `orders` (relation) is let through (its elements are not
+# recursively validated), so a nested cyclic payload terminates instead of looping.
+route POST "/relations/persistent-contract" take payload as DbUser
+    reply 200, { id: payload.id, name: payload.name }
+
+# A value schema referencing a persistent schema: `note` is validated, `customer`
+# (relation) is let through whatever it carries (an id or an object).
+route POST "/relations/value-ref-persistent" take payload as CreateOrderRequest
+    reply 200, { note: payload.note }
+
+# A persistent self-referential schema (tree) used as a contract.
+route POST "/relations/self-ref-tree" take payload as TreeNode
+    reply 200, { id: payload.id, label: payload.label }

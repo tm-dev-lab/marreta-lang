@@ -1,0 +1,23 @@
+# Valid JSON takes the success path; the rescue recovery path (invalid JSON) is
+# exercised live in run.sh, since scenarios always send a well-formed body.
+scenario "rescue route returns the parsed body on valid input"
+    when POST "/errors/rescue" with { ok: 1 }
+    then status 200
+    then response is { body: { ok: 1 } }
+
+scenario "uncaught raise becomes a 500"
+    when GET "/errors/raise"
+    then status 500
+
+scenario "conditional raise fires on the condition"
+    when GET "/errors/raise-if/false"
+    then status 500
+
+scenario "conditional raise passes when the condition is false"
+    when GET "/errors/raise-if/true"
+    then status 200
+    then response is { body: { ok: true } }
+
+scenario "raise inside a task propagates to the route"
+    when GET "/errors/raise-from-task"
+    then status 500

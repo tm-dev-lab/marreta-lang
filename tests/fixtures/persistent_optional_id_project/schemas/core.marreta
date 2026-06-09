@@ -1,0 +1,5 @@
+schema User
+    db: users
+
+    id?: integer
+    name: string

@@ -1,0 +1,24 @@
+route GET "/products"
+    products = db.products.find_all()
+    reply 200, { items: products }
+
+route GET "/products/:id"
+    product = db.products.find(params.id)
+    require product else fail 404, "product not found"
+    reply 200, product
+
+route POST "/products" take payload as ProductPayload
+    require payload.name else fail 400, "name is required"
+
+    saved = db.products.save({
+        name: payload.name,
+        price: payload.price,
+        category: payload.category
+    })
+
+    reply 201 as ProductCreated, { created: true, name: saved.name, price: saved.price }
+
+route DELETE "/products/:id"
+    deleted = db.products.delete(params.id)
+    require deleted else fail 404, "product not found"
+    reply 200, { deleted: true }

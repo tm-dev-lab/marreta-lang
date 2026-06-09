@@ -1,0 +1,26 @@
+task validate_positive(n)
+    raise "must be positive" if n <= 0
+    n
+
+# rescue (block): catch a runtime error and return a fallback shape
+route POST "/errors/rescue" take raw
+    result = raw >> json.parse() rescue {
+        recovered: true,
+        code: error.code
+    }
+
+    reply 200, result
+
+# raise: uncaught reaches the route as a 500
+route GET "/errors/raise"
+    raise "boom"
+
+# raise with a condition
+route GET "/errors/raise-if/:active"
+    raise "not active" if params.active == "false"
+
+    reply 200, { ok: true }
+
+# raise inside a task propagates to the route (500)
+route GET "/errors/raise-from-task"
+    reply 200, { result: validate_positive(-1) }

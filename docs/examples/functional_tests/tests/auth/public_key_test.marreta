@@ -1,0 +1,15 @@
+scenario "authorizes jwt route with fixed public key provider"
+    given auth.scenario_public_key_auth returns {
+        sub: "partner-789",
+        roles: ["admin"]
+    }
+
+    when GET "/auth/scenario-public-key"
+
+    then status 200
+    then response is {
+        body: {
+            user_id: "partner-789",
+            provider: "scenario_public_key_auth"
+        }
+    }

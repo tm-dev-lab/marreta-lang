@@ -1,0 +1,305 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "MarretaLang",
+  "scopeName": "source.marreta",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#routeDeclarations" },
+    { "include": "#taskDeclarations" },
+    { "include": "#schemaDeclarations" },
+    { "include": "#authDeclarations" },
+    { "include": "#consumerDeclarations" },
+    { "include": "#scenarioDeclarations" },
+    { "include": "#schemaBindings" },
+    { "include": "#keywords" },
+    { "include": "#constants" },
+    { "include": "#operators" },
+    { "include": "#types" },
+    { "include": "#builtins" },
+    { "include": "#namespaceCalls" },
+    { "include": "#namespaces" },
+    { "include": "#methodCalls" },
+    { "include": "#properties" },
+    { "include": "#bindings" },
+    { "include": "#numbers" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.number-sign.marreta",
+          "match": "#.*$"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.marreta",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.marreta",
+              "match": "\\\\."
+            },
+            {
+              "name": "meta.interpolation.marreta",
+              "begin": "#\\{",
+              "end": "\\}",
+              "beginCaptures": {
+                "0": { "name": "punctuation.section.interpolation.begin" }
+              },
+              "endCaptures": {
+                "0": { "name": "punctuation.section.interpolation.end" }
+              },
+              "patterns": [
+                {
+                  "name": "constant.character.escape.marreta",
+                  "match": "\\\\."
+                },
+                {
+                  "include": "$self"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "routeDeclarations": {
+      "patterns": [
+        {
+          "match": "\\b(route)\\s+(GET|POST|PUT|PATCH|DELETE)\\s+(\"[^\"]+\")",
+          "captures": {
+            "1": { "name": "keyword.control.marreta" },
+            "2": { "name": "keyword.other.http.marreta" },
+            "3": { "name": "string.quoted.double.path.marreta" }
+          }
+        }
+      ]
+    },
+    "taskDeclarations": {
+      "patterns": [
+        {
+          "match": "\\b(task)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\b",
+          "captures": {
+            "1": { "name": "keyword.control.marreta" },
+            "2": { "name": "entity.name.function.marreta" }
+          }
+        }
+      ]
+    },
+    "schemaDeclarations": {
+      "patterns": [
+        {
+          "match": "\\b(schema)\\s+([A-Z][a-zA-Z0-9_]*)\\b",
+          "captures": {
+            "1": { "name": "keyword.control.marreta" },
+            "2": { "name": "entity.name.type.class.marreta" }
+          }
+        }
+      ]
+    },
+    "authDeclarations": {
+      "patterns": [
+        {
+          "match": "\\b(auth)\\s+(api_key|jwt)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\b",
+          "captures": {
+            "1": { "name": "keyword.control.marreta" },
+            "2": { "name": "storage.type.marreta" },
+            "3": { "name": "entity.name.type.class.marreta" }
+          }
+        }
+      ]
+    },
+    "consumerDeclarations": {
+      "patterns": [
+        {
+          "match": "\\b(on)\\s+(queue|topic)\\s+(\"[^\"]+\")\\s+(take)\\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\\s+(as)\\s+([A-Z][a-zA-Z0-9_]*))?\\b",
+          "captures": {
+            "1": { "name": "keyword.control.marreta" },
+            "2": { "name": "storage.type.marreta" },
+            "3": { "name": "string.quoted.double.queue-name.marreta" },
+            "4": { "name": "keyword.control.marreta" },
+            "5": { "name": "variable.parameter.marreta" },
+            "6": { "name": "keyword.control.marreta" },
+            "7": { "name": "entity.name.type.class.marreta" }
+          }
+        }
+      ]
+    },
+    "scenarioDeclarations": {
+      "patterns": [
+        {
+          "match": "\\b(scenario)\\s+(\"[^\"]+\")",
+          "captures": {
+            "1": { "name": "keyword.control.marreta" },
+            "2": { "name": "string.quoted.double.scenario-title.marreta" }
+          }
+        },
+        {
+          "match": "^(\\s*)(given|when|then)(?=\\b)",
+          "captures": {
+            "2": { "name": "keyword.control.marreta" }
+          }
+        }
+      ]
+    },
+    "schemaBindings": {
+      "patterns": [
+        {
+          "match": "\\b(as)\\s+([A-Z][a-zA-Z0-9_]*)\\b",
+          "captures": {
+            "1": { "name": "keyword.control.marreta" },
+            "2": { "name": "entity.name.type.class.marreta" }
+          }
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.marreta",
+          "match": "\\b(task|route|match|fallback|map|reduce|keep|skip|require|reject|while|if|else|take|reply|fail|listen|export|transaction|as|response|scenario|given|when|then|returns|is|anything|raise|rescue|on|topic|nack|requeue|ack|with|auth|allow)\\b"
+        },
+        {
+          "name": "constant.language.boolean.marreta",
+          "match": "\\b(true|false|null)\\b"
+        },
+        {
+          "name": "keyword.other.http.marreta",
+          "match": "\\b(GET|POST|PUT|PATCH|DELETE)\\b"
+        }
+      ]
+    },
+    "constants": {
+      "patterns": [
+        {
+          "name": "support.constant",
+          "match": "\\b(env)\\b(?=\\.)"
+        },
+        {
+          "name": "constant.other",
+          "match": "\\b[A-Z][A-Z0-9_]*\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.marreta",
+          "match": "(>>|\\*>>|->|=>|==|!=|>=|<=|>|<|\\+|-|\\*|/|%|:|=|\\b(like|in)\\b)"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "storage.type.marreta",
+          "match": "\\b(schema|string|integer|float|decimal|boolean|list|map|of|instant|date|time|duration|interval)\\b"
+        }
+      ]
+    },
+    "builtins": {
+      "patterns": [
+        {
+          "name": "support.function",
+          "match": "\\b(print|type|len|range|decimal)\\b"
+        }
+      ]
+    },
+    "namespaces": {
+      "patterns": [
+        {
+          "name": "support.class.marreta support.type",
+          "match": "\\b(db|doc|cache|queue|topic|time|http_client|auth|env|math|fs|json|base64|uuid|feature|log)\\b"
+        }
+      ]
+    },
+    "namespaceCalls": {
+      "patterns": [
+        {
+          "match": "\\b(db|doc|cache|queue|topic|time|http_client|auth|env|math|fs|json|base64|uuid|feature|log)(\\.)([a-zA-Z_][a-zA-Z0-9_]*)\\b",
+          "captures": {
+            "1": { "name": "support.class.marreta support.type" },
+            "2": { "name": "punctuation.accessor.dot" },
+            "3": { "name": "entity.name.function.marreta support.function" }
+          }
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.marreta",
+          "match": "\\b\\d+(\\.\\d+)?\\b"
+        }
+      ]
+    },
+    "methodCalls": {
+      "patterns": [
+        {
+          "match": "(?:>>|\\*>>)\\s*([a-zA-Z_][a-zA-Z0-9_]*)\\b",
+          "captures": {
+            "1": { "name": "entity.name.function.marreta" }
+          }
+        },
+        {
+          "match": "\\.([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?=\\()",
+          "captures": {
+            "1": { "name": "entity.name.function.marreta" }
+          }
+        },
+        {
+          "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?=\\()",
+          "captures": {
+            "1": { "name": "entity.name.function.marreta" }
+          }
+        }
+      ]
+    },
+    "properties": {
+      "patterns": [
+        {
+          "match": "\\.([a-zA-Z_][a-zA-Z0-9_]*)\\b",
+          "captures": {
+            "1": { "name": "variable.other.property.marreta" }
+          }
+        },
+        {
+          "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?=:)",
+          "captures": {
+            "1": { "name": "variable.other.property" }
+          }
+        }
+      ]
+    },
+    "bindings": {
+      "patterns": [
+        {
+          "match": "\\b(take)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\b",
+          "captures": {
+            "1": { "name": "keyword.control.marreta" },
+            "2": { "name": "variable.parameter.marreta" }
+          }
+        },
+        {
+          "match": "\\b(map|reduce)\\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\\s*,\\s*([a-zA-Z_][a-zA-Z0-9_]*))?",
+          "captures": {
+            "1": { "name": "keyword.control.marreta" },
+            "2": { "name": "variable.parameter.marreta" },
+            "3": { "name": "variable.parameter.marreta" }
+          }
+        },
+        {
+          "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?==)",
+          "captures": {
+            "1": { "name": "entity.name.variable.marreta" }
+          }
+        }
+      ]
+    }
+  }
+}

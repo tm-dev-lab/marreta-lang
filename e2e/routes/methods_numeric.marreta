@@ -1,0 +1,39 @@
+# integer methods (catalog: integer.*)
+route GET "/methods/integer"
+    n = -7
+    a = 3
+    reply 200, {
+        abs: n.abs(),
+        max: a.max(9),
+        min: a.min(9),
+        to_string: a.to_string()
+    }
+
+# float methods (catalog: float.*)
+route GET "/methods/float"
+    f = 3.75
+    g = -2.5
+    reply 200, {
+        abs: g.abs(),
+        ceil: f.ceil(),
+        floor: f.floor(),
+        round: f.round(1),
+        max: f.max(9.0),
+        min: f.min(9.0),
+        to_string: f.to_string()
+    }
+
+# decimal methods (catalog: decimal.*); decimal arrives via schema coercion
+route POST "/methods/decimal" take payload as DecimalInput
+    d = payload.amount
+    reply 200, {
+        abs: d.abs(),
+        ceil: d.ceil(),
+        floor: d.floor(),
+        round: d.round(2),
+        scale: d.scale(),
+        trunc: d.trunc(),
+        to_float: d.to_float(),
+        to_integer: d.to_integer(),
+        to_string: d.to_string()
+    }

@@ -1,0 +1,64 @@
+on queue "incoming_shipment" take msg as ShipmentMessage
+    product = db.products >> where(sku: msg.sku) >> fetch_one
+    require product else nack
+
+    stock_after = product.current_stock + msg.quantity
+
+    db.products.update(product.id, {
+        current_stock: stock_after
+    })
+    cache.set(inventory.stock_key(msg.sku), stock_after)
+
+    event = inventory.stock_event("shipment_received", msg.sku, msg.quantity, stock_after, null, null, false)
+    doc.inventory_events.save(event)
+
+    topic.publish "inventory.increased", {
+        event_type: "inventory.increased",
+        shipment_id: msg.shipment_id,
+        sku: msg.sku,
+        quantity: msg.quantity,
+        stock_after: stock_after
+    }
+
+on queue "order_cancelled" take msg as CancellationMessage
+    reservation = db.reservations >> where(order_id: msg.order_id) >> where(status: "active") >> fetch_one
+    require reservation else nack
+
+    product = db.products >> where(sku: reservation.sku) >> fetch_one
+    require product else nack
+
+    stock_after = product.current_stock + reservation.quantity
+    reserved_after = product.reserved_stock - reservation.quantity
+
+    transaction
+        db.reservations.update(reservation.id, { status: "cancelled" })
+        db.products.update(product.id, {
+            current_stock: stock_after,
+            reserved_stock: reserved_after
+        })
+
+    cache.set(inventory.stock_key(reservation.sku), stock_after)
+
+    event = inventory.stock_event("order_cancelled", reservation.sku, reservation.quantity, stock_after, msg.order_id, msg.reason, false)
+    doc.inventory_events.save(event)
+
+    topic.publish "inventory.cancelled", {
+        event_type: "inventory.cancelled",
+        order_id: msg.order_id,
+        sku: reservation.sku,
+        quantity: reservation.quantity,
+        stock_after: stock_after,
+        reason: msg.reason
+    }
+
+on topic "inventory.reserved" take event
+    inventory.record_inventory_audit(event)
+
+on topic "inventory.increased" take event
+    inventory.record_inventory_audit(event)
+
+on topic "inventory.cancelled" take event
+    inventory.record_inventory_audit(event)
+
+on topic "inventory.low_stock" take event
+    inventory.record_inventory_audit(event)

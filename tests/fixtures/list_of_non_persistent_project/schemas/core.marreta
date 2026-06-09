@@ -1,0 +1,9 @@
+schema CartItem
+    sku: string
+    quantity: integer
+
+schema Cart
+    db: carts
+
+    id: integer
+    items: list of CartItem

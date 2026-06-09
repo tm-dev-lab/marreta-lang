@@ -1,0 +1,7 @@
+# Keep the build context tiny: the image only needs the release binary.
+*
+!target
+target/*
+!target/release
+target/release/*
+!target/release/marreta

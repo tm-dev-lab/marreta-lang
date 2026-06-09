@@ -1,0 +1,24 @@
+scenario "inline task squares its argument"
+    when GET "/tasks/inline/4"
+    then status 200
+    then response is { body: { square: 16 } }
+
+scenario "block task returns its last expression and composes another task"
+    when GET "/tasks/block"
+    then status 200
+    then response is { body: { taxed: 220.0, net: 215.0 } }
+
+scenario "recursive task computes fibonacci"
+    when GET "/tasks/recursion/10"
+    then status 200
+    then response is { body: { fib: 55 } }
+
+scenario "inner task defined inside the route body"
+    when GET "/tasks/inner/5"
+    then status 200
+    then response is { body: { bonus: 15 } }
+
+scenario "exported task reached cross-file via its file-namespace"
+    when GET "/tasks/namespaced/hello"
+    then status 200
+    then response is { body: { shout: "HELLO!", wrapped: "<hello>", piped: "HELLO!" } }

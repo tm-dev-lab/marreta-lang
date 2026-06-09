@@ -1,0 +1,183 @@
+# ═════════════════════════════════════════════════════════════════════════════
+# SECTION 27 — Schema contracts showcase
+#
+# Demonstrates all schema contract patterns the language supports:
+#
+#   POST /contracts/request-only   — validated request, free-form response
+#   POST /contracts/response-only  — free request, shaped response (strip extra fields)
+#   POST /contracts/full           — validated request + shaped response
+#   POST /contracts/composed       — schema with a nested schema (Reference type)
+#   POST /contracts/optional       — schema with optional fields
+# ═════════════════════════════════════════════════════════════════════════════
+
+# ─── Route 1: request schema only ─────────────────────────────────────────────
+#
+# Input:  { "name": "Alice", "active": true }
+# Output: free-form — { "received": "Alice", "active": true }
+#
+# The request is validated against item_payload (name: string, active: boolean).
+# Missing or wrong-type fields return 422 automatically.
+# The response has no schema constraint — any shape is allowed.
+
+route POST "/contracts/request-only" take payload as ItemPayload
+    reply 200, { received: payload.name, active: payload.active }
+
+# ─── Route 2: response schema only ────────────────────────────────────────────
+#
+# Input:  { "name": "Alice" }  (no schema — any map accepted)
+# Output: shaped by item_response — { "id": integer, "name": string, "active": boolean }
+#
+# The `secret` field is stripped because it is not in item_response.
+# This demonstrates that reply as enforces the response contract
+# even when the input is unvalidated.
+
+route POST "/contracts/response-only" take payload
+    reply 200 as ItemResponse, {
+        id:     1,
+        name:   payload.name,
+        active: true,
+        secret: "stripped — not in item_response schema"
+    }
+
+# ─── Route 3: full contract ────────────────────────────────────────────────────
+#
+# Input:  { "name": "Alice", "active": true }
+# Output: { "id": 1, "name": "Alice", "active": true }  — shaped by item_response
+#
+# Both ends are contracted:
+#   - request validated against item_payload (422 on bad input)
+#   - response stripped to item_response fields
+
+route POST "/contracts/full" take payload as ItemPayload
+    reply 200 as ItemResponse, {
+        id:     1,
+        name:   payload.name,
+        active: payload.active,
+        secret: "stripped"
+    }
+
+# ─── Route 4: composed schema (Reference) ─────────────────────────────────────
+#
+# Input:  {
+#   "name": "Alice", "email": "alice@example.com",
+#   "address": { "street": "Rua A", "city": "SP", "zipcode": "01310-100" }
+# }
+# Output: { "id": 1, "name": "Alice", "email": "...", "address": { ... } }
+#
+# ContactPayload contains an `address` field typed as the `Address` schema.
+# ContactResponse also contains `address` as a Reference — the nested schema
+# is preserved in the response contract.
+
+route POST "/contracts/composed" take payload as ContactPayload
+    reply 201 as ContactResponse, {
+        id:      1,
+        name:    payload.name,
+        email:   payload.email,
+        address: payload.address,
+        secret:  "stripped"
+    }
+
+# ─── Route 5: optional fields ─────────────────────────────────────────────────
+#
+# Input (minimal):  { "name": "Bob", "email": "bob@example.com",
+#                     "address": { "street": "Av B", "city": "RJ", "zipcode": "20040-020" } }
+# Input (full):     add "age": 30  — optional integer field
+#
+# Output: { "id": 1, "name": "...", "email": "..." } — shaped by contact_summary
+#
+# contact_payload has `age?` (optional). The route accepts both payloads.
+# contact_summary strips down to just id and name in the response.
+
+route POST "/contracts/optional" take payload as ContactPayload
+    age_info = match payload.age
+        null     -> 0
+        fallback -> payload.age
+    reply 200 as ContactSummary, {
+        id:    age_info,
+        name:  payload.name,
+        email: payload.email
+    }
+
+# ─── Route 6: temporal contract ───────────────────────────────────────────────
+#
+# Input and output both use TimePayload so request coercion and response shaping
+# preserve the canonical temporal forms across the contract boundary.
+
+route POST "/contracts/time" take payload as TimePayload
+    reply 200 as TimePayload, {
+        created_at: payload.created_at,
+        billing_date: payload.billing_date,
+        opens_at: payload.opens_at,
+        sla: payload.sla,
+        business_window: payload.business_window,
+        ignored: "stripped"
+    }
+
+route POST "/contracts/math" take payload as MathPayload
+    reply 200 as MathResponse, {
+        rounded: math.round(payload.value, places: 2),
+        bounded: math.clamp(payload.value, min: payload.min, max: payload.max),
+        ignored: "stripped"
+    }
+
+route POST "/contracts/api-types" take payload as ContractTypesPayload
+    reply 200 as ContractTypesPayload, {
+        status: payload.status,
+        amount: payload.amount.round(2),
+        ignored: "stripped"
+    }
+
+route GET "/contracts/api-types/constructor"
+    payload = ContractTypesPayload { status: "paid", amount: decimal("19.900") }
+    reply 200 as ContractTypesPayload, {
+        status: payload.status,
+        amount: payload.amount.round(2),
+        ignored: "stripped"
+    }
+
+route GET "/contracts/api-types/constructor-extra"
+    payload = ContractTypesPayload { status: "paid", amount: decimal("1.00"), typo: true }
+    reply 200, payload
+
+route GET "/contracts/api-types/methods"
+    price = decimal("19.90")
+    fee = decimal("2.50")
+    negative = decimal("-19.90")
+    reply 200, {
+        sum: price + fee,
+        difference: price - decimal("0.90"),
+        product: decimal("9.99") * 3,
+        quotient: price / decimal("2"),
+        half_even_down: decimal("2.345").round(2),
+        half_even_up: decimal("2.355").round(2),
+        floor: price.floor(),
+        ceil: decimal("19.10").ceil(),
+        trunc: negative.trunc(),
+        abs: negative.abs(),
+        scale: price.scale(),
+        to_integer: negative.to_integer(),
+        to_float: decimal("1.25").to_float(),
+        to_string: price.to_string(),
+        greater_than: price > decimal("10.00"),
+        integer_compare: price > 10
+    }
+
+route GET "/contracts/api-types/cache"
+    payload = ContractTypesPayload { status: "pending", amount: decimal("7.50") }
+    cache.set("ft:contracts:api-types", payload, ttl: 60)
+    cached = cache.get("ft:contracts:api-types")
+    reply 200 as ContractTypesPayload, {
+        status: cached.status,
+        amount: cached.amount,
+        ignored: "stripped"
+    }
+
+route GET "/contracts/constructor/reply"
+    response = ConstructorMessage { message: "constructed", count: 2 }
+    reply 200 as ConstructorMessage, response
+
+route GET "/contracts/constructor/cache"
+    response = ConstructorMessage { message: "cached", count: 3 }
+    cache.set("ft:constructor:message", response, ttl: 60)
+    cached = cache.get("ft:constructor:message")
+    reply 200 as ConstructorMessage, cached

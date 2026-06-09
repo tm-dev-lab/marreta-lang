@@ -1,0 +1,22 @@
+# path param (coerced to integer when numeric)
+route GET "/binding/path/:id"
+    reply 200, { id: params.id }
+
+# query params (arrive as strings; use `or` for defaults)
+route GET "/binding/query" take query
+    term = query.term or "none"
+    limit = query.limit or "10"
+    reply 200, { term: term, limit: limit }
+
+# request headers (lowercase, no hyphens via dot access)
+route GET "/binding/headers" take headers
+    accept = headers.accept or "not-set"
+    reply 200, { accept: accept }
+
+# raw text body
+route POST "/binding/raw" take raw
+    reply 200, { length: raw.length(), body: raw }
+
+# JSON body (untyped payload)
+route POST "/binding/json" take payload
+    reply 200, { echoed: payload.value }

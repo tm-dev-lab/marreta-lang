@@ -1,0 +1,4 @@
+schema User
+    db: users
+
+    name: string

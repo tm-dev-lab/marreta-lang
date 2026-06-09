@@ -1,0 +1,28 @@
+scenario "pushes queue message through queue mock"
+    given queue.push "ft.orders", anything returns true
+
+    when POST "/queue/push" with {
+        order_id: "scenario-order-1",
+        total: 120
+    }
+
+    then status 202
+    then response is {
+        body: {
+            queued: true,
+            order_id: "scenario-order-1"
+        }
+    }
+
+scenario "pushes constructed schema through typed queue mock"
+    given queue.push "ft.typed", anything returns true
+
+    when POST "/queue/push-constructor" with {}
+
+    then status 202
+    then response is {
+        body: {
+            queued: true,
+            order_id: 41
+        }
+    }

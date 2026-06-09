@@ -1,0 +1,32 @@
+scenario "match maps a known code"
+    when GET "/control/match/200"
+    then status 200
+    then response is { body: { code: 200, label: "OK" } }
+
+scenario "match falls back on an unknown code"
+    when GET "/control/match/999"
+    then status 200
+    then response is { body: { label: "Unknown" } }
+
+scenario "if/else picks the middle tier"
+    when GET "/control/tier/75"
+    then status 200
+    then response is { body: { tier: "mid" } }
+
+scenario "if/else picks the high tier"
+    when GET "/control/tier/150"
+    then status 200
+    then response is { body: { tier: "high" } }
+
+scenario "guard accepts a valid request"
+    when POST "/control/guard" with { name: "Ana" }
+    then status 200
+    then response is { body: { ok: true, name: "Ana" } }
+
+scenario "guard rejects a missing name"
+    when POST "/control/guard" with { blocked: false }
+    then status 400
+
+scenario "guard rejects a blocked account"
+    when POST "/control/guard" with { name: "Ana", blocked: true }
+    then status 403

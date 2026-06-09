@@ -1,0 +1,58 @@
+services:
+  mongodb:
+    image: mongo:7
+    container_name: bench-bank-mongodb
+    environment:
+      MONGO_INITDB_DATABASE: bank
+      MONGO_INITDB_ROOT_USERNAME: marreta
+      MONGO_INITDB_ROOT_PASSWORD: marreta-secret
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  marreta:
+    image: ${MARRETA_IMAGE:-marreta-lang:dev}
+    container_name: bench-bank-marreta
+    working_dir: /app
+    command: ["serve"]
+    volumes:
+      - ./apps/marreta:/app:ro
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    ports:
+      - "18080:8080"
+    cpus: 1.0
+    mem_limit: 1g
+
+  fastapi:
+    build:
+      context: ./apps/fastapi
+    container_name: bench-bank-fastapi
+    environment:
+      MONGO_URI: mongodb://marreta:marreta-secret@mongodb:27017/bank?authSource=admin
+      MONGO_DB: bank
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    ports:
+      - "18081:8080"
+    cpus: 1.0
+    mem_limit: 1g
+
+  nest:
+    build:
+      context: ./apps/nest
+    container_name: bench-bank-nest
+    environment:
+      MONGO_URI: mongodb://marreta:marreta-secret@mongodb:27017/bank?authSource=admin
+      MONGO_DB: bank
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    ports:
+      - "18082:8080"
+    cpus: 1.0
+    mem_limit: 1g

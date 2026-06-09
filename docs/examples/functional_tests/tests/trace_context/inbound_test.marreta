@@ -1,0 +1,30 @@
+scenario "runtime trace context accepts inbound traceparent"
+    when POST "/trace-context/log" with {
+        order_id: 77
+    } and headers {
+        traceparent: "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
+        tracestate: "rojo=00f067aa0ba902b7"
+    }
+
+    then status 200
+    then response is {
+        body: {
+            ok: true,
+            order_id: 77
+        }
+    }
+
+scenario "invalid traceparent does not break the request"
+    when POST "/trace-context/log" with {
+        order_id: 1
+    } and headers {
+        traceparent: "garbage"
+    }
+
+    then status 200
+    then response is {
+        body: {
+            ok: true,
+            order_id: 1
+        }
+    }

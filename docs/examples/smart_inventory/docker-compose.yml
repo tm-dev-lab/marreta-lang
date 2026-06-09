@@ -1,0 +1,103 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: smart_inventory
+      POSTGRES_USER: marreta
+      POSTGRES_PASSWORD: marreta
+    ports:
+      - "5438:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U marreta -d smart_inventory"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+
+  mongodb:
+    image: mongo:latest
+    environment:
+      MONGO_INITDB_DATABASE: smart_inventory
+      MONGO_INITDB_ROOT_USERNAME: marreta
+      MONGO_INITDB_ROOT_PASSWORD: marreta-secret
+    ports:
+      - "27022:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "-u", "marreta", "-p", "marreta-secret", "--authenticationDatabase", "admin", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    ports:
+      - "5675:5672"
+      - "15675:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--requirepass", "redis-secret"]
+    ports:
+      - "6383:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "redis-secret", "ping"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+
+  app:
+    image: ${MARRETA_IMAGE:-marreta-lang:dev}
+    user: "${MARRETA_UID:-0}:${MARRETA_GID:-0}"
+    volumes:
+      - ./:/app
+    working_dir: /app
+    environment:
+      HOME: /tmp
+      MARRETA_DB_PROVIDER: postgres
+      MARRETA_DB_HOST: postgres
+      MARRETA_DB_PORT: 5432
+      MARRETA_DB_NAME: smart_inventory
+      MARRETA_DB_USER: marreta
+      MARRETA_DB_PASSWORD: marreta
+      MARRETA_DOC_PROVIDER: mongodb
+      MARRETA_DOC_HOST: mongodb
+      MARRETA_DOC_PORT: 27017
+      MARRETA_DOC_NAME: smart_inventory
+      MARRETA_DOC_USER: marreta
+      MARRETA_DOC_PASSWORD: marreta-secret
+      MARRETA_DOC_AUTH_SOURCE: admin
+      MARRETA_QUEUE_PROVIDER: rabbitmq
+      MARRETA_QUEUE_HOST: rabbitmq
+      MARRETA_QUEUE_PORT: 5672
+      MARRETA_QUEUE_USER: guest
+      MARRETA_QUEUE_PASSWORD: guest
+      MARRETA_CACHE_PROVIDER: redis
+      MARRETA_CACHE_HOST: redis
+      MARRETA_CACHE_PORT: 6379
+      MARRETA_CACHE_PASSWORD: redis-secret
+      MARRETA_PORT: 3942
+    ports:
+      - "3942:3942"
+    command: ["serve", "--port", "3942"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:3942/_health >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s

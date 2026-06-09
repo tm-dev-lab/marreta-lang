@@ -1,0 +1,63 @@
+export task order_cache_key(order_id)
+    "order:#{order_id}"
+
+export task order_created_topic_key(order_id)
+    "topic:order_created:#{order_id}"
+
+export task build_order_details(order, customer)
+    {
+        id: order.id,
+        customer_id: customer.id,
+        customer_name: customer.name,
+        description: order.description,
+        total_amount: order.total_amount,
+        status: order.status,
+        created_at: order.created_at,
+        completed_at: order.completed_at
+    }
+
+export task build_order_created_event(order, customer)
+    {
+        order_id: order.id,
+        customer_id: customer.id,
+        customer_email: customer.email,
+        status: order.status,
+        created_at: order.created_at
+    }
+
+export task load_order_details(order_id)
+    key = order_cache_key(order_id)
+    print("cache miss for #{key}")
+    order = db.orders.find(order_id)
+    require order else fail 404, "order not found"
+    print("db fetch for #{key}")
+
+    customer = order.customer >> fetch
+    require customer else fail 404, "customer not found"
+
+    details = build_order_details(order, customer)
+    details >> cache.set(key, ttl: 300)
+    details
+
+export task build_billing_command(order, customer)
+    {
+        order_id: order.id,
+        customer_id: customer.id,
+        customer_name: customer.name,
+        total_amount: order.total_amount,
+        status: order.status,
+        created_at: order.created_at,
+        completed_at: order.completed_at
+    }
+
+export task build_audit_snapshot(order, customer)
+    {
+        order_id: order.id,
+        customer_id: customer.id,
+        customer_name: customer.name,
+        description: order.description,
+        total_amount: order.total_amount,
+        status: order.status,
+        created_at: order.created_at,
+        completed_at: order.completed_at
+    }

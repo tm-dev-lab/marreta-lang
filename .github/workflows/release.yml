@@ -1,0 +1,103 @@
+name: Release
+
+# Manual only. Creates the release tag if it does not exist yet, builds the
+# runtime binaries from that tag, and publishes a GitHub release.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish (created from the dispatched branch if it does not exist yet, e.g. v0.2.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    name: Prepare tag ${{ inputs.tag }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # The tag is essential to a release, so the workflow creates it rather than
+      # requiring it to be pushed by hand. If it already exists, that exact tag is
+      # released as-is.
+      - name: Create the release tag if needed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${{ inputs.tag }}"
+          if gh api "repos/${{ github.repository }}/git/ref/tags/${tag}" >/dev/null 2>&1; then
+            echo "Tag '${tag}' already exists; releasing it as-is."
+          else
+            echo "Tag '${tag}' does not exist; creating it at ${GITHUB_SHA}."
+            git tag "${tag}" "${GITHUB_SHA}"
+            git push origin "refs/tags/${tag}"
+          fi
+
+  build:
+    name: Build ${{ matrix.asset }}
+    needs: prepare
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The Linux binaries also serve Windows users under WSL: the x86_64
+          # build for x86_64 Windows, the arm64 build for ARM Windows.
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            asset: marreta-linux-x86_64
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            asset: marreta-linux-arm64
+          # Both macOS binaries are built on the arm64 runner: arm64 natively and
+          # x86_64 by cross-compile, since the hosted Intel runners are scarce.
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            asset: marreta-macos-x86_64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            asset: marreta-macos-arm64
+    steps:
+      # Build from the exact tag being released (now guaranteed to exist), so the
+      # binaries always match the tag.
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build release binary
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Package binary
+        run: cp "target/${{ matrix.target }}/release/marreta" "${{ matrix.asset }}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: ${{ matrix.asset }}
+          path: ${{ matrix.asset }}
+
+  release:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download built binaries
+        uses: actions/download-artifact@v5
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          name: ${{ inputs.tag }}
+          files: dist/*
+          generate_release_notes: true

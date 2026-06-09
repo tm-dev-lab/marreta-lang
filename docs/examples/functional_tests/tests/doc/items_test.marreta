@@ -1,0 +1,16 @@
+scenario "reads document through doc mock"
+    given doc.items.find("doc-123") returns {
+        _id: "doc-123",
+        name: "scenario-doc-item",
+        active: true
+    }
+
+    when GET "/docs/items/doc-123"
+
+    then status 200
+    then response is {
+        body: {
+            _id: "doc-123",
+            name: "scenario-doc-item"
+        }
+    }
