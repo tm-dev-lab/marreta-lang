@@ -44,6 +44,21 @@ Notice the `trace_id` is the same as the two `app_log` lines above. The request 
 your code emitted while handling it share one trace, so you can group them. Turn the
 per-request record off with `MARRETA_REQUEST_LOG=false` if you only want your own logs.
 
+## Tie a request's logs together
+
+Because the `request` line and every `app_log` it produced share one `trace_id`, you can pull a
+single request's whole story by that id. While developing, that is one filter on the JSON lines:
+
+```bash
+# every line for one request, in the order it happened
+marreta serve | grep '"trace_id":"0a85c287'
+```
+
+A log collector (Loki, CloudWatch, Datadog, and so on) does the same with a `trace_id` filter,
+which is how you read one request end to end in production. The `duration_ms` on the `request`
+line is that request's total server time, so sorting requests by it is the first step when a
+route feels slow.
+
 ## Set the level
 
 `MARRETA_LOG_LEVEL` filters by severity (`debug`, `info`, `warn`, `error`, default `info`).

@@ -74,7 +74,8 @@ first save creates it.
 
 ## 4. Write the read route
 
-Add a route to read one note back by its `_id`. If there is none, fail with a 404:
+Add this to the same `routes/notes.marreta`: a route to read one note back by its
+`_id`. If there is none, fail with a 404:
 
 ```ruby
 route GET "/notes/:id"
@@ -86,7 +87,8 @@ route GET "/notes/:id"
 ## 5. Test it
 
 A scenario test stubs the document calls with `given`, so it needs no running
-provider:
+provider. Put it in `tests/notes_test.marreta`: `marreta test` only runs files under
+`tests/` whose names end in `_test.marreta`, so the suffix is required.
 
 ```ruby
 scenario "creates a note"

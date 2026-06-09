@@ -12,6 +12,11 @@ result. They run your real route logic (validation, control flow, shaping) in
 memory, without starting a server or any provider, so they are fast and
 deterministic. They live under `tests/` and run with `marreta test`.
 
+`marreta test` discovers scenario files by a name convention: a file must be under
+`tests/` and end in `_test.marreta` (for example `notes_test.marreta`). A file in
+`tests/` without that suffix is ignored and its scenarios never run, so name the file
+accordingly when you create one.
+
 The examples below use the `/greetings` route from `marreta init` and a small
 `/notes` endpoint backed by the document store, which needs no migration.
 
@@ -166,7 +171,8 @@ integration.
 marreta test
 ```
 
-Every scenario in `tests/` runs, and the command exits non-zero if any fails.
+Every scenario in a `*_test.marreta` file under `tests/` runs, and the command exits
+non-zero if any fails.
 
 ## Result checkpoint
 
