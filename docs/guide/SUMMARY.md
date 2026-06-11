@@ -10,6 +10,7 @@
 
 ## How-to
 
+- [Install the editor extension](how-to/install-the-editor-extension.md)
 - [Configure environment variables](how-to/configure-environment.md)
 - [Persist data with local services](how-to/use-local-services.md)
 - [Evolve your database with migrations](how-to/migrations.md)

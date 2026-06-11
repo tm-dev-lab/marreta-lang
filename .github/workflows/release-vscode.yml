@@ -1,0 +1,135 @@
+name: Release VS Code extension
+
+# Manual only. Versions the extension from docs/editors/vscode/package.json, builds the VSIX, and
+# publishes it as a GitHub Release under the vscode-v* tag namespace. The release is created with
+# make_latest:false on purpose: install.sh resolves releases/latest/download/<runtime-target> for
+# the one-line installer, and a VSIX release left as `latest` would 404 that curl|sh. The same run
+# also publishes to Open VSX and the MS Marketplace, each gated on its secret.
+#
+# Optional GitHub secrets (Settings > Secrets and variables > Actions):
+#   OVSX_TOKEN   Open VSX access token (open-vsx.org, reaches Cursor / VSCodium / Windsurf / Theia)
+#   VSCE_PAT     Azure DevOps PAT with Marketplace > Manage (the MS VS Code Marketplace)
+# A channel whose secret is absent is skipped, named in the run summary, and never fails the run.
+#
+# Before the first Open VSX publish, the `MarretaTeam` namespace must already exist: run
+# `npx ovsx create-namespace MarretaTeam -p <token>` once. Create the namespace before setting
+# OVSX_TOKEN, because a publish to a missing namespace fails (it does not skip, the skip is only for
+# an absent secret). Same for the MS Marketplace publisher `MarretaTeam`.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Extension release tag, must equal vscode-v<package.json version> (e.g. vscode-v0.2.18)"
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  EXT_DIR: docs/editors/vscode
+  # Mapped from secrets at the job level so the publish steps can gate on their presence.
+  OVSX_TOKEN: ${{ secrets.OVSX_TOKEN }}
+  VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+jobs:
+  release:
+    name: Release ${{ inputs.tag }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # The tag must equal the manifest version before anything is packaged, so a release can never
+      # ship a VSIX whose version disagrees with its tag.
+      - name: Assert tag matches package.json version
+        run: |
+          version="$(node -p "require('./${EXT_DIR}/package.json').version")"
+          expected="vscode-v${version}"
+          if [ "${{ inputs.tag }}" != "$expected" ]; then
+            echo "::error::tag '${{ inputs.tag }}' does not match manifest version (expected '$expected')"
+            exit 1
+          fi
+          echo "tag matches manifest version $version"
+
+      # Own the tag rather than requiring a hand-pushed one (mirrors release.yml). The checkout is
+      # already at the dispatched commit, so the tag pins exactly what is built.
+      - name: Create the release tag if needed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${{ inputs.tag }}"
+          if gh api "repos/${{ github.repository }}/git/ref/tags/${tag}" >/dev/null 2>&1; then
+            echo "Tag '${tag}' already exists; releasing it as-is."
+          else
+            git tag "${tag}" "${GITHUB_SHA}"
+            git push origin "refs/tags/${tag}"
+          fi
+
+      - name: Package VSIX
+        run: |
+          ( cd "$EXT_DIR" && npx --yes @vscode/vsce package --no-dependencies \
+              -o "$GITHUB_WORKSPACE/marreta-extension.vsix" )
+
+      # GitHub Release, never as repo `latest` (see header: install.sh resolves releases/latest for
+      # the runtime binaries; a VSIX release as latest would break the one-line installer).
+      - name: Publish GitHub Release (not latest)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          name: VS Code Extension ${{ inputs.tag }}
+          files: marreta-extension.vsix
+          make_latest: "false"
+
+      - name: Publish to Open VSX
+        if: ${{ env.OVSX_TOKEN != '' }}
+        run: npx --yes ovsx publish marreta-extension.vsix -p "$OVSX_TOKEN"
+
+      - name: Publish to MS Marketplace
+        if: ${{ env.VSCE_PAT != '' }}
+        run: npx --yes @vscode/vsce publish --packagePath marreta-extension.vsix -p "$VSCE_PAT"
+
+      # Loud, per-channel record so a missing or expired token surfaces in the run instead of
+      # silently dropping a publication.
+      - name: Channel summary
+        if: always()
+        run: |
+          published="github"
+          skipped=""
+          if [ -n "$OVSX_TOKEN" ]; then
+            published="$published, openvsx"
+          else
+            skipped="openvsx (no OVSX_TOKEN)"
+          fi
+          if [ -n "$VSCE_PAT" ]; then
+            published="$published, marketplace"
+          else
+            skipped="${skipped:+$skipped; }marketplace (no VSCE_PAT)"
+          fi
+          echo "published: $published" >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "$skipped" ]; then echo "skipped: $skipped" >> "$GITHUB_STEP_SUMMARY"; fi
+
+      # Self-verification (AC6): the created release must not be repo `latest`, and the published
+      # asset must carry the expected manifest version (validates the artifact, not just the local
+      # packaging).
+      - name: Verify the published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          is_latest="$(gh release view "${{ inputs.tag }}" --repo "${{ github.repository }}" --json isLatest -q .isLatest)"
+          if [ "$is_latest" != "false" ]; then
+            echo "::error::release ${{ inputs.tag }} is marked latest; it must not be (would break install.sh)"
+            exit 1
+          fi
+          gh release download "${{ inputs.tag }}" --repo "${{ github.repository }}" --pattern '*.vsix' --dir verify
+          unzip -o verify/*.vsix -d verify/unzipped >/dev/null
+          packaged="$(node -p "require('./verify/unzipped/extension/package.json').version")"
+          version="$(node -p "require('./${EXT_DIR}/package.json').version")"
+          if [ "$packaged" != "$version" ]; then
+            echo "::error::published VSIX version '$packaged' does not match manifest '$version'"
+            exit 1
+          fi
+          echo "verified: isLatest=false, published VSIX version $packaged"

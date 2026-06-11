@@ -204,6 +204,13 @@ indexes reverted in favor of inference; reverted objects at tag `pre-067-revert`
   reserved words free in a name position, blocked as a binder), a cross-linking sentence on
   `concepts/namespaces.md`, and the `reference/errors.md` gaps (the live `unique_violation` 409 code,
   the automatic-422 validation note, and the overstating intro fix). Docs-only, no runtime change.
+- Spec 070 is proposed: a release path for the VS Code extension. A manual
+  (`workflow_dispatch`) `release-vscode.yml` that versions from `docs/editors/vscode/package.json`
+  (tag-equals-version guard), builds the VSIX on a single runner, and publishes a GitHub Release under
+  a `vscode-v*` tag namespace, with `--latest=false` so it never steals the installer's
+  `releases/latest` (no existing workflow changes). The same workflow publishes to Open VSX (Cursor
+  and forks) and the MS Marketplace (stock VS Code), each gated on its secret with a loud per-channel
+  skip, and ships the binary-first install how-to under `docs/guide`.
 - Follow-up (sister lint of 068): `shadows-injected-binding` - warn when a local shadows an injected
   binding (`params`, `auth`, `payload`, ...). A lint concern, not reserved-word reservation; its own
   small spec.
