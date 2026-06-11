@@ -8,8 +8,10 @@ summary: "The error codes the runtime emits, when they happen, and which ones yo
 # Error codes
 
 When the runtime returns an error, the response body carries a `code` field with one
-of these values. The codes describe what went wrong. Your own `fail` and `raise`
-choose the HTTP status, while these codes do not.
+of these values. The codes describe what went wrong. The HTTP status is usually yours
+to choose with `fail` and `raise`, though the runtime sets it on its own in some cases.
+For example schema validation returns 422, a unique-index violation returns 409 with
+the `unique_violation` code, and a failed `require auth` or `allow` returns 401 or 403.
 
 ## Load-time
 
@@ -45,4 +47,12 @@ from with `rescue` (see [Handle errors](../how-to/handle-errors.md)).
 | `http_client_error` | An outbound `http_client` request failed. |
 | `io_error` | A filesystem or project-load I/O failure. |
 | `infrastructure_error` | An infrastructure dependency was unavailable. |
+| `unique_violation` | A write violated a unique index or constraint. Returned as HTTP 409. Fires for both the relational and the document provider, including an index you created by hand. |
 | `runtime_error` | A generic runtime fault not covered by a more specific code. |
+
+## Validation
+
+A route that binds a body with `take payload as Schema` validates it against the
+schema before your code runs. When the body does not match, the runtime returns
+HTTP 422 with a message naming the offending field, and your route body never
+executes. You do not write this check, and you do not choose its status.

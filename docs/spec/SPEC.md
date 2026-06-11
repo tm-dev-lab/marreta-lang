@@ -195,6 +195,15 @@ indexes reverted in favor of inference; reverted objects at tag `pre-067-revert`
   extension already tokenizes/colors the words (grammar) and completes them (catalog-driven). Post-rewind
   trim of the pre-067 spec: the declarative `index`/`unique` keywords and the `doc:` marker are gone,
   so that half is dropped.
+- Spec 069 is delivered: the hand-authored `docs/guide` pages for 067 and 068, which shipped with
+  only their docs of record. An Indexes section on `reference/namespaces/doc.md` (the runtime infers
+  each collection's index from its query surface and ensures it at `serve` startup, no declaration /
+  marker / migration, reported by `marreta doctor`, with the exclusion / background-ensure /
+  never-drop / hand-made-index boundaries), the deferred two-layer reserved/contextual model framing
+  `reference/keywords.md` (namespaces are reserved, directives and vocabularies are contextual;
+  reserved words free in a name position, blocked as a binder), a cross-linking sentence on
+  `concepts/namespaces.md`, and the `reference/errors.md` gaps (the live `unique_violation` 409 code,
+  the automatic-422 validation note, and the overstating intro fix). Docs-only, no runtime change.
 - Follow-up (sister lint of 068): `shadows-injected-binding` - warn when a local shadows an injected
   binding (`params`, `auth`, `payload`, ...). A lint concern, not reserved-word reservation; its own
   small spec.

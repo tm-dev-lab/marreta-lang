@@ -15,6 +15,14 @@ Track of all implementation progress. Use this to resume work after session loss
 
 ## Session Log
 
+### 2026-06-11 — Spec 069 Docs for Inferred Indexes and Reserved Words (guide pages for 067 + 068)
+
+- [x] `spec/069_DOCS_FOR_INFERRED_INDEXES_AND_RESERVED_WORDS.md` — the hand-authored `docs/guide` pages for two features that shipped with only their docs of record, paying the guide debt that 067 and 068 deferred. Docs-only, no runtime change.
+- [x] `reference/namespaces/doc.md` — an **Indexes** section: the mechanism (the runtime infers each collection's index from the `where`/`order` query surface and ensures it in the background at `marreta serve` start, no declaration / marker / migration, reported by `marreta doctor`) and the boundaries (the `like` / `doc.pipeline` / non-literal-field / builder-indirection exclusions, the background-ensure tradeoff, never-drop/orphan, and hand-made-index coexistence linking the `unique_violation` 409).
+- [x] `reference/keywords.md` — the deferred two-layer model reframed as the page's organizing intro (the rule "namespaces are reserved, directives and vocabularies are contextual", both layers, the existing groups noted as Layer 1) with a runtime-verified name-position-vs-binder example.
+- [x] `concepts/namespaces.md` — a sentence on why a native namespace is reserved and cannot be shadowed, linking the model. `reference/errors.md` — a `unique_violation` (409) row, a Validation 422 note, and a non-exhaustive intro that no longer overstates that the HTTP status is always developer-chosen.
+- [x] Two review rounds (design: F1 errors.md gaps + F2 index boundaries, S1/S2 adopted; diff: builder terminated with `>> fetch`, non-exhaustive errors intro, builder-indirection exclusion, exact `marreta serve` trigger). Examples verified against `docs/examples` and the runtime. Core gates green; no functional/migrations/e2e needed (no runtime change). Closes the 067/068 guide deferral.
+
 ### 2026-06-11 — Spec 068 Reserved Word Normalization (reserve doc/feature/env at the lexer)
 
 - [x] `spec/068_RESERVED_WORD_NORMALIZATION.md` — `doc`/`feature`/`env` are reserved at the lexer (peers of `db`/`cache`/`queue`), closing the drift where SPEC.md documented `doc` as reserved but `keyword_lookup` did not, so a variable could shadow a documented namespace and the provider silently vanished from that scope. Done with a normalize-back parser: the new token does real work in exactly one place (blocking a binder), and every position downstream of declaration is unchanged.

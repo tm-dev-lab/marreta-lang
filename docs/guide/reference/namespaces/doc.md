@@ -75,6 +75,44 @@ result = doc.pipeline("orders", [
 Like `db.native_query`, it is an escape hatch. Reach for it only when the query
 pipeline and the per-document methods fall short.
 
+## Indexes
+
+You do not declare indexes. The runtime reads the `where` and `order` shape of every
+query you write against a collection and ensures a matching index in the document
+provider, in the background, at `marreta serve` startup. A query like this one tells
+the runtime to index `account_id` and `_id` together:
+
+```ruby
+route GET "/orders/by-account/:id"
+    orders = doc.orders
+    >> where("account_id" == params.id)
+    >> order("_id", "desc")
+    >> limit(20)
+    >> fetch_all
+    reply 200, { items: orders }
+```
+
+Indexes follow your code. A new query shape is ensured the next time `marreta serve`
+starts, with no migration step, so the index plan stays in sync with the queries that
+need it. `marreta doctor` reports the plan, marking each index present, absent, or orphan.
+
+What inference does not cover, so you are not surprised in production:
+
+- **It reads the query builder, not the escape hatches.** Inference covers the
+  `>> where(...) >> order(...)` surface with literal field names. It does not read a
+  `like(...)` filter, a raw `doc.pipeline(...)`, a field chosen through a variable, or a
+  pipeline built on a collection held in a variable (it matches the collection feeding
+  the `>>` directly). Moving a query from `>> where` to a raw pipeline drops inference
+  for that shape.
+- **The ensure runs in the background.** `serve` binds and starts handling requests
+  immediately, so a brand-new filter on a large collection serves unindexed until the
+  build finishes.
+- **It never drops an index.** A shape you stop using leaves its index behind as an
+  orphan. `marreta doctor` flags it for you to remove by hand. An index you created
+  yourself is owned by you and is never touched.
+- **A unique index you add by hand is still enforced.** A write that violates it
+  returns the `unique_violation` error (HTTP 409), see [Error codes](../errors.md).
+
 ## Notes
 
 - The document provider must be configured and reachable before `marreta serve`. Run

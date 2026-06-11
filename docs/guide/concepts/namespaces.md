@@ -30,6 +30,10 @@ route GET "/users/:id"
 There is no `import db` and no client to construct. The full list, one page each, is in
 the [Namespaces reference](../reference/namespaces.md).
 
+A native namespace name is reserved, so a variable cannot shadow it. This is what keeps a
+configured provider from silently vanishing inside a scope that happened to reuse its
+name. See the [reserved words](../reference/keywords.md) model for the full rule.
+
 ## File namespaces
 
 You can also create your own namespaces. When a `.marreta` file exports tasks, the file
