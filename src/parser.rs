@@ -4465,6 +4465,17 @@ mod tests_errors {
                     other => panic!("schema field `{w}`: {other:?}"),
                 }
             }
+
+            // (6) `db:` table name — the directive value names a physical table (a reference), so
+            // every reserved word is tolerated here, including `db` itself (`db: db` is a table
+            // literally named `db`).
+            let prog = parse_ok(&format!("schema S\n    db: {w}\n    a: string\n"));
+            match &prog[0] {
+                Statement::Schema { db_table, .. } => {
+                    assert_eq!(db_table.as_deref(), Some(w), "db: table name `{w}`")
+                }
+                other => panic!("db: table name `{w}`: {other:?}"),
+            }
         }
     }
 

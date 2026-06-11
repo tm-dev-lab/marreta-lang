@@ -180,3 +180,11 @@ Foundation (lexer tokens + normalize-back at the primary/member positions + the 
   namespaces and completions are catalog-driven, so no extension change was needed.
 - **Gates**: `fmt`, `clippy -D warnings`, unit suite, `functional_tests` 567/567,
   `migrations_functional` PASS, `e2e` PASS (+18 live smoke), extension `node --check` + VSIX.
+
+**Safety property of normalize-back.** The change only converts previously-*invalid* programs into
+valid ones; no previously-*valid* program changes its parse. A type token in expression position was
+always a parse error ("expected expression"), so `select(date)` becoming `Identifier("date")` adds
+programs without reinterpreting any. The type *positions* stay intact because `parse_schema_type`
+matches the type tokens before the primary dispatcher (`a: string`, `list of date`). The one residual
+shift is deliberate: an unbindable `date` in expression position is now a runtime `ReferenceError`
+instead of a parse error - the natural cost of allowing `select(date)`.
