@@ -59,7 +59,7 @@ none of those tokens exist.)
 ### 2.4 Audited tolerance in name positions
 
 Reserving a word must not break its legitimate, non-declaration uses. The **name positions** are:
-after `.` (`payload.doc`), a map key (`{ doc: 1 }`), a schema field name (`doc string`), a named-arg
+after `.` (`payload.doc`), a map key (`{ doc: 1 }`), a schema field name (`doc: string`), a named-arg
 name (`where(doc: ...)`), and a column in `select(...)`. The work is threefold:
 
 - **(a) Add** `Doc`/`Feature`/`Env` to the existing manual name-lists (`parse_member_name` for after
@@ -83,8 +83,15 @@ Binding one of the reserved namespaces as a name fails with a dedicated message,
 
 The **binder positions** that must block - each a negative table-test case - are: an assignment
 target, a task name, a **task parameter** (`task f(doc)`), a **map/reduce block variable**, a
-**schema name**, and an **auth provider name**. Enumerating them guards the one risk of normalize-back:
-accidentally tolerating a binder because it resembled a name position.
+**schema name**, an **auth provider name**, a **consumer `take` binding** (the dev-chosen name in
+`on queue "orders" take <name>`, and likewise `on topic`), and a **route path parameter**
+(`route GET "/x/:doc"`). Enumerating them guards the one risk of normalize-back: accidentally
+tolerating a binder because it resembled a name position.
+
+The **route path parameter is special**: the name lives inside the route string literal, so the
+lexer never emits a `Doc`/`Feature`/`Env` token there. The block therefore happens at **load /
+route-registration** time (`route GET "/x/:doc"` is rejected with the same dedicated message), and in
+the table test this one case is a **load test, not a parse test**.
 
 ### 2.6 Catalog→token invariant
 
@@ -124,8 +131,9 @@ so the invariant does not cover it; `env`'s token is added and tested directly.
 
 1. `doc`, `feature`, and `env` are lexer keyword tokens; binding any of them as a name fails with the
    dedicated reserved-word message. The enumerated binder positions (assignment, task name, task
-   parameter, map/reduce block variable, schema name, auth provider name) are negative table-test
-   cases.
+   parameter, map/reduce block variable, schema name, auth provider name, consumer `take` binding,
+   and route path parameter) are negative table-test cases - the route path parameter blocked at
+   load / route-registration time (the name is inside the route string literal), the rest at parse.
 2. Normalize-back holds: every name position (`.` member, map key, schema field name, named-arg name,
    `select(...)` column) parses the word as that name, and a schema field named `doc`/`feature`/`env`
    is expressible (with the documented contrast against `db`, claimed by the `db:` directive).
