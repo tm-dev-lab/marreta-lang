@@ -94,6 +94,13 @@ pub enum TokenKind {
     Time,
     Math,
     HttpClient,
+    // Spec 068: reserved at the lexer so a documented namespace cannot be shadowed by a variable
+    // (these were lexed as plain identifiers and recognized by name downstream). `Doc`/`Feature`
+    // are namespaces; `Env` is the environment accessor. The parser normalizes them back to
+    // `Identifier(..)` in every position except a binder, so nothing downstream changes.
+    Doc,
+    Feature,
+    Env,
 
     // --- Reserved Words — Schema & AutoDoc (v0.3.1) ---
     Schema,
@@ -220,6 +227,11 @@ pub fn keyword_lookup(word: &str) -> Option<TokenKind> {
         "time" => Some(TokenKind::Time),
         "math" => Some(TokenKind::Math),
         "http_client" => Some(TokenKind::HttpClient),
+        // Spec 068: namespaces/accessor reserved at the lexer (normalized back to identifiers by
+        // the parser everywhere except a binder position).
+        "doc" => Some(TokenKind::Doc),
+        "feature" => Some(TokenKind::Feature),
+        "env" => Some(TokenKind::Env),
 
         // HTTP Verbs
         "GET" => Some(TokenKind::Get),

@@ -1363,6 +1363,20 @@ impl Parser {
                 self.advance();
                 Ok(Expression::Identifier("db".into()))
             }
+            // Spec 068: doc/feature/env are reserved tokens normalized back to identifiers here, so
+            // `doc.coll`, `feature.flag`, and the `env` accessor parse exactly as before.
+            TokenKind::Doc => {
+                self.advance();
+                Ok(Expression::Identifier("doc".into()))
+            }
+            TokenKind::Feature => {
+                self.advance();
+                Ok(Expression::Identifier("feature".into()))
+            }
+            TokenKind::Env => {
+                self.advance();
+                Ok(Expression::Identifier("env".into()))
+            }
             // queue.push — point-to-point queue producer (v0.8)
             TokenKind::Queue => {
                 self.advance(); // consume `queue`
@@ -1983,73 +1997,37 @@ impl Parser {
     }
 
     fn parse_member_name(&mut self) -> Result<(String, usize, usize), MarretaError> {
-        match self.current_kind().clone() {
-            TokenKind::Identifier(name) => {
-                let line = self.current().line;
-                let column = self.current().column;
-                self.advance();
-                Ok((name, line, column))
-            }
-            TokenKind::Time => {
-                let line = self.current().line;
-                let column = self.current().column;
-                self.advance();
-                Ok(("time".into(), line, column))
-            }
-            TokenKind::Base64 => {
-                let line = self.current().line;
-                let column = self.current().column;
-                self.advance();
-                Ok(("base64".into(), line, column))
-            }
-            TokenKind::Uuid => {
-                let line = self.current().line;
-                let column = self.current().column;
-                self.advance();
-                Ok(("uuid".into(), line, column))
-            }
-            TokenKind::Log => {
-                let line = self.current().line;
-                let column = self.current().column;
-                self.advance();
-                Ok(("log".into(), line, column))
-            }
-            TokenKind::TypeInstant => {
-                let line = self.current().line;
-                let column = self.current().column;
-                self.advance();
-                Ok(("instant".into(), line, column))
-            }
-            TokenKind::TypeDate => {
-                let line = self.current().line;
-                let column = self.current().column;
-                self.advance();
-                Ok(("date".into(), line, column))
-            }
-            TokenKind::TypeDuration => {
-                let line = self.current().line;
-                let column = self.current().column;
-                self.advance();
-                Ok(("duration".into(), line, column))
-            }
-            TokenKind::TypeInterval => {
-                let line = self.current().line;
-                let column = self.current().column;
-                self.advance();
-                Ok(("interval".into(), line, column))
-            }
-            TokenKind::On => {
-                let line = self.current().line;
-                let column = self.current().column;
-                self.advance();
-                Ok(("on".into(), line, column))
-            }
-            _ => Err(MarretaError::UnexpectedToken {
-                expected: "identifier".into(),
-                got_lexeme: self.current().lexeme.clone(),
-                line: self.current().line,
-                column: self.current().column,
-            }),
+        let line = self.current().line;
+        let column = self.current().column;
+        // A member name after `.` is just a name: an identifier, or any reserved word used as a
+        // name (Spec 068 - reserved words only block in a binder position, never here). The keyword
+        // round-trip is the single source so every name position accepts the same set, closing the
+        // holes where this list was missing tokens like `db` or `date`.
+        if let TokenKind::Identifier(name) = self.current_kind().clone() {
+            self.advance();
+            return Ok((name, line, column));
+        }
+        if let Some(name) = self.reserved_word_as_name() {
+            self.advance();
+            return Ok((name, line, column));
+        }
+        Err(MarretaError::UnexpectedToken {
+            expected: "identifier".into(),
+            got_lexeme: self.current().lexeme.clone(),
+            line,
+            column,
+        })
+    }
+
+    /// Spec 068: the spelling of the current token if it is a reserved word (a word that
+    /// `keyword_lookup` maps to exactly this kind), else `None`. Shared by every name position so a
+    /// reserved word - including the newly reserved `doc`/`feature`/`env` - is accepted uniformly as
+    /// a name, instead of each position carrying its own drifting list.
+    fn reserved_word_as_name(&self) -> Option<String> {
+        let lexeme = self.current().lexeme.clone();
+        match crate::token::keyword_lookup(&lexeme) {
+            Some(kind) if &kind == self.current_kind() => Some(lexeme),
+            _ => None,
         }
     }
 
