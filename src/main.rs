@@ -304,6 +304,7 @@ fn run_serve(entrypoint: &ProjectEntrypoint, port_override: Option<u16>) {
     loaded.runtime.freeze_envs();
     let registry = loaded.registry;
     let runtime = Arc::new(loaded.runtime);
+    let doc_index_plan = loaded.doc_index_plan;
     let marreta_config = match port_override {
         Some(p) => marreta_config.with_port(p),
         None => marreta_config,
@@ -441,8 +442,43 @@ fn run_serve(entrypoint: &ProjectEntrypoint, port_override: Option<u16>) {
         startup_started_at: Some(startup_started_at),
     };
 
+    // Spec 067: ensure the inferred document indexes in the background, concurrent with serving,
+    // so a slow online build on a large collection never delays the bind. The app serves
+    // immediately; a brand-new query shape runs unindexed (today's behavior) until its build
+    // finishes. A failed build is logged, never crashing serve.
+    if let Some(engine) = config.doc_engine.as_ref() {
+        if !doc_index_plan.is_empty() {
+            rt.spawn(ensure_doc_indexes(engine.driver.clone(), doc_index_plan));
+        }
+    }
+
     if let Err(e) = rt.block_on(serve(registry, runtime, config)) {
         exit_with_marreta_runtime_error("server error", e);
+    }
+}
+
+/// Ensure the inferred document indexes (Spec 067) in the background. `createIndex` is idempotent
+/// and builds online (it does not lock the collection), so serving is unaffected. A failed build
+/// is logged and skipped.
+async fn ensure_doc_indexes(
+    driver: Arc<dyn marreta::doc::DocDriver>,
+    plan: Vec<marreta::doc::index_inference::InferredIndex>,
+) {
+    for idx in plan {
+        println!(
+            "ensuring document index {} on {} ...",
+            idx.name, idx.collection
+        );
+        match driver
+            .ensure_index(&idx.collection, &idx.keys, false, &idx.name)
+            .await
+        {
+            Ok(()) => println!("document index {} ready", idx.name),
+            Err(e) => eprintln!(
+                "document index {} build failed (serving continues): {}",
+                idx.name, e
+            ),
+        }
     }
 }
 

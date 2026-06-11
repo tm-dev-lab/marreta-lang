@@ -834,7 +834,7 @@ async fn execute_route_profiled(
                         &interp,
                         &e,
                         RuntimeErrorLogScope::Request {
-                            http_status: StatusCode::INTERNAL_SERVER_ERROR,
+                            http_status: status_for_error(&e),
                         },
                     );
                     let _timer =
@@ -917,7 +917,7 @@ async fn execute_route_profiled(
                 &interp,
                 &e,
                 RuntimeErrorLogScope::Request {
-                    http_status: StatusCode::INTERNAL_SERVER_ERROR,
+                    http_status: status_for_error(&e),
                 },
             );
             let _timer =
@@ -1300,6 +1300,22 @@ fn forbidden_response() -> Response {
 }
 
 /// Converts a `MarretaError` into an axum `Response`.
+/// The HTTP status a runtime error surfaces as. Shared by the structured runtime-error log
+/// (Spec 037, a frozen event-log contract) and `error_to_response`, so the logged status always
+/// matches the response status.
+fn status_for_error(e: &MarretaError) -> StatusCode {
+    match e {
+        MarretaError::HttpResponse { status_code, .. } => {
+            StatusCode::from_u16(*status_code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+        MarretaError::HttpError { status_code, .. } => {
+            StatusCode::from_u16(*status_code as u16).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+        MarretaError::UniqueConstraintViolation { .. } => StatusCode::CONFLICT,
+        _ => StatusCode::INTERNAL_SERVER_ERROR,
+    }
+}
+
 fn error_to_response(e: MarretaError) -> Response {
     match e {
         MarretaError::HttpResponse {
@@ -1332,6 +1348,16 @@ fn error_to_response(e: MarretaError) -> Response {
             let status = StatusCode::from_u16(status_code as u16)
                 .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
             (status, Json(serde_json::json!({ "error": message }))).into_response()
+        }
+        err @ MarretaError::UniqueConstraintViolation { .. } => {
+            // Stable, provider-agnostic body: never echo the driver message (it names the
+            // technology and leaks the duplicate key value). The detail stays in the MarretaError
+            // for `rescue` and the structured log.
+            let body = serde_json::json!({
+                "error": "unique constraint violation",
+                "code": err.semantic_code(),
+            });
+            (StatusCode::CONFLICT, Json(body)).into_response()
         }
         e => {
             let body = serde_json::json!({
@@ -1821,6 +1847,37 @@ mod tests {
     use super::*;
     use axum::http::StatusCode;
     use std::sync::{Mutex, OnceLock};
+
+    #[tokio::test]
+    async fn test_unique_constraint_violation_maps_to_409() {
+        let resp = error_to_response(MarretaError::UniqueConstraintViolation {
+            message: "duplicate key value violates unique constraint \"uniq_users_email\"".into(),
+            operation: "db.users.save".into(),
+        });
+        assert_eq!(resp.status(), StatusCode::CONFLICT);
+        // The body is stable and never echoes the provider message (finding 2).
+        let json = body_json(resp).await;
+        assert_eq!(json["error"], "unique constraint violation");
+        assert_eq!(json["code"], "unique_violation");
+    }
+
+    #[test]
+    fn test_status_for_error_unique_violation_is_conflict() {
+        let status = status_for_error(&MarretaError::UniqueConstraintViolation {
+            message: "x".into(),
+            operation: "y".into(),
+        });
+        assert_eq!(status, StatusCode::CONFLICT);
+    }
+
+    #[test]
+    fn test_unique_violation_semantic_code_is_unique_violation() {
+        let err = MarretaError::UniqueConstraintViolation {
+            message: "x".into(),
+            operation: "y".into(),
+        };
+        assert_eq!(err.semantic_code(), "unique_violation");
+    }
 
     async fn body_json(resp: Response) -> serde_json::Value {
         let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)

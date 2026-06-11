@@ -396,6 +396,14 @@ fn translate_pg_error_with_operation(
     table: &str,
     operation: String,
 ) -> MarretaError {
+    // Postgres unique_violation (SQLSTATE 23505) -> dedicated error, surfaced as 409 (Spec 067).
+    if let sqlx::Error::Database(db_error) = &err {
+        if let Some(violation) =
+            pg_unique_violation(db_error.code().as_deref(), db_error.message(), &operation)
+        {
+            return violation;
+        }
+    }
     let message = match &err {
         sqlx::Error::Database(db_err) => db_err.message().to_string(),
         sqlx::Error::RowNotFound => format!("record not found in '{}'", table),
@@ -404,6 +412,19 @@ fn translate_pg_error_with_operation(
         _ => err.to_string(),
     };
     MarretaError::DbError { message, operation }
+}
+
+/// Classify a Postgres SQLSTATE as a unique-violation error if it is one (23505). Pure and
+/// testable without a live connection.
+fn pg_unique_violation(code: Option<&str>, message: &str, operation: &str) -> Option<MarretaError> {
+    if code == Some("23505") {
+        Some(MarretaError::UniqueConstraintViolation {
+            message: message.to_string(),
+            operation: operation.to_string(),
+        })
+    } else {
+        None
+    }
 }
 
 fn is_undefined_table_error(err: &sqlx::Error, table: &str) -> bool {
@@ -696,6 +717,16 @@ impl DbTx for PgTransaction {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_pg_unique_violation_classifies_sqlstate_23505() {
+        assert!(matches!(
+            pg_unique_violation(Some("23505"), "dup", "db.users.save"),
+            Some(MarretaError::UniqueConstraintViolation { .. })
+        ));
+        assert!(pg_unique_violation(Some("23503"), "fk", "db.users.save").is_none());
+        assert!(pg_unique_violation(None, "x", "db.users.save").is_none());
+    }
 
     // ─── PoolConfig ─────────────────────────────────────────────────────────────
 

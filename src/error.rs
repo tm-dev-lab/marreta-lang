@@ -5,6 +5,7 @@ use std::{borrow::Cow, fmt};
 pub enum ErrorCode {
     RaiseError,
     DbError,
+    UniqueViolation,
     QueueError,
     CacheError,
     HttpClientError,
@@ -23,6 +24,7 @@ impl ErrorCode {
         match self {
             Self::RaiseError => "raise_error",
             Self::DbError => "db_error",
+            Self::UniqueViolation => "unique_violation",
             Self::QueueError => "queue_error",
             Self::CacheError => "cache_error",
             Self::HttpClientError => "http_client_error",
@@ -198,6 +200,13 @@ pub enum MarretaError {
 
     /// Database operation failure — wraps driver errors with Marreta-friendly messages
     DbError {
+        message: String,
+        operation: String,
+    },
+
+    /// A write violated a unique index/constraint. Raised identically by the relational and the
+    /// document providers, and surfaced as HTTP 409 Conflict (Spec 067).
+    UniqueConstraintViolation {
         message: String,
         operation: String,
     },
@@ -462,6 +471,9 @@ impl fmt::Display for MarretaError {
             Self::DbError { message, .. } => {
                 write!(f, "database error: {}", message)
             }
+            Self::UniqueConstraintViolation { message, .. } => {
+                write!(f, "unique constraint violation: {}", message)
+            }
             Self::NackSignal { requeue } => {
                 write!(f, "nack(requeue={})", requeue)
             }
@@ -497,6 +509,7 @@ impl MarretaError {
         match self {
             Self::RaiseError { .. } => ErrorCode::RaiseError,
             Self::DbError { .. } => ErrorCode::DbError,
+            Self::UniqueConstraintViolation { .. } => ErrorCode::UniqueViolation,
             Self::NackSignal { .. } | Self::QueueError { .. } => ErrorCode::QueueError,
             Self::CacheError { .. } => ErrorCode::CacheError,
             Self::HttpClientError { .. } => ErrorCode::HttpClientError,
@@ -525,6 +538,7 @@ impl MarretaError {
         match self {
             Self::RaiseError { .. } => "raise".to_string(),
             Self::DbError { operation, .. } => operation.clone(),
+            Self::UniqueConstraintViolation { operation, .. } => operation.clone(),
             Self::NackSignal { .. } => "nack".to_string(),
             Self::QueueError { operation, .. } => operation.clone(),
             Self::CacheError { operation, .. } => operation.clone(),
@@ -545,6 +559,9 @@ impl MarretaError {
         match self {
             Self::RaiseError { .. } => Some(Cow::Borrowed("raise")),
             Self::DbError { operation, .. } => Some(Cow::Borrowed(operation.as_str())),
+            Self::UniqueConstraintViolation { operation, .. } => {
+                Some(Cow::Borrowed(operation.as_str()))
+            }
             Self::QueueError { operation, .. } => Some(Cow::Borrowed(operation.as_str())),
             Self::CacheError { operation, .. } => Some(Cow::Borrowed(operation.as_str())),
             Self::HttpClientError { operation, .. } => Some(Cow::Borrowed(operation.as_str())),
@@ -558,6 +575,7 @@ impl MarretaError {
         match self {
             Self::RaiseError { message } => message.clone(),
             Self::DbError { message, .. } => message.clone(),
+            Self::UniqueConstraintViolation { message, .. } => message.clone(),
             Self::NackSignal { requeue } => format!("nack(requeue={})", requeue),
             Self::QueueError { message, .. } => message.clone(),
             Self::CacheError { message, .. } => message.clone(),

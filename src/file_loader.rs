@@ -160,6 +160,8 @@ impl ProjectRuntime {
 pub struct LoadedProject {
     pub registry: RouteRegistry,
     pub runtime: ProjectRuntime,
+    /// Document indexes inferred from the query surface (Spec 067), ensured at serve startup.
+    pub doc_index_plan: Vec<crate::doc::index_inference::InferredIndex>,
 }
 
 fn is_pascal_case_schema_name(name: &str) -> bool {
@@ -247,6 +249,9 @@ pub fn load_project_with_feature_flags(
     let mut merged_schemas: HashMap<String, SchemaDefinition> = HashMap::new();
     let mut all_project_schemas: HashMap<String, SchemaDefinition> = HashMap::new();
     let mut merged_startup: Vec<Statement> = Vec::new();
+    // Every parsed statement, retained only to infer document indexes from the query surface
+    // (Spec 067). Inference needs the route/task/consumer bodies, not just the startup block.
+    let mut all_statements: Vec<Statement> = Vec::new();
     let mut merged_consumers: Vec<ConsumerDefinition> = Vec::new();
     let mut merged_auth_providers: HashMap<String, AuthProvider> = HashMap::new();
     let mut exported_names: HashMap<String, String> = HashMap::new();
@@ -261,6 +266,7 @@ pub fn load_project_with_feature_flags(
         if is_entrypoint {
             validate_entrypoint_metadata(file_path, &program)?;
         }
+        all_statements.extend(program.iter().cloned());
         let module_id = module_id(root_dir, file_path);
         let source_tag = file_stem(file_path);
         let module = build_module_definition(
@@ -336,6 +342,8 @@ pub fn load_project_with_feature_flags(
         feature_flags,
     )?;
 
+    let doc_index_plan = crate::doc::index_inference::infer_indexes(&all_statements);
+
     Ok(LoadedProject {
         registry: RouteRegistry {
             routes: merged_routes,
@@ -346,6 +354,7 @@ pub fn load_project_with_feature_flags(
             auth_providers: merged_auth_providers,
         },
         runtime,
+        doc_index_plan,
     })
 }
 

@@ -293,6 +293,18 @@ pub fn build_doctor_report(
         }
     }
 
+    // Spec 067: report the inferred document indexes (present / absent / orphan).
+    if let Some(section) = doc_index_section(&loaded.doc_index_plan, config, connect, doc_ready) {
+        if section
+            .entries
+            .iter()
+            .any(|e| matches!(e.status, DoctorStatus::Error))
+        {
+            has_errors = true;
+        }
+        sections.push(section);
+    }
+
     if intent.migrations {
         let mut migration_entries = Vec::new();
         let migrations_dir = entrypoint
@@ -1102,6 +1114,113 @@ fn connectivity_queue(config: &MarretaConfig) -> Result<String, String> {
     }
 }
 
+/// Spec 067: report the inferred document indexes. Read-only, doctor never creates them (serve
+/// does). With a live connection it compares the plan to the indexes present and reports present,
+/// absent (not built yet or build failed, indistinguishable from a separate process), and orphan
+/// (an owned index no longer inferred). The build lifecycle lives in the serve logs, not here.
+fn doc_index_section(
+    plan: &[crate::doc::index_inference::InferredIndex],
+    config: &MarretaConfig,
+    connect: bool,
+    doc_ready: bool,
+) -> Option<DoctorSection> {
+    if plan.is_empty() {
+        return None;
+    }
+    let mut entries = vec![ok(format!(
+        "{} document index{} inferred from the query surface",
+        plan.len(),
+        if plan.len() == 1 { "" } else { "es" }
+    ))];
+    if connect && doc_ready {
+        match doc_index_present_entries(plan, config) {
+            Ok(mut e) => entries.append(&mut e),
+            Err(msg) => entries.push(error(msg)),
+        }
+    } else {
+        for idx in plan {
+            entries.push(skip(format!(
+                "{} on {} (not checked, no connection)",
+                idx.name, idx.collection
+            )));
+        }
+    }
+    Some(DoctorSection {
+        title: "Document indexes".to_string(),
+        entries,
+    })
+}
+
+/// Connect to the document provider and classify each inferred index against what is present.
+fn doc_index_present_entries(
+    plan: &[crate::doc::index_inference::InferredIndex],
+    config: &MarretaConfig,
+) -> Result<Vec<DoctorEntry>, String> {
+    use std::collections::BTreeSet;
+    let rt =
+        tokio::runtime::Runtime::new().map_err(|e| format!("doc index check skipped: {}", e))?;
+    let engine = match rt.block_on(async { crate::doc::DocEngine::from_config(config).await }) {
+        Ok(Some(engine)) => engine,
+        Ok(None) => return Err("doc index check skipped: no doc provider is active".to_string()),
+        Err(e) => return Err(format!("doc index check failed to connect: {}", e)),
+    };
+
+    let collections: BTreeSet<&str> = plan.iter().map(|i| i.collection.as_str()).collect();
+    let mut entries = Vec::new();
+    for collection in collections {
+        let present = match rt.block_on(async { engine.driver.list_index_names(collection).await })
+        {
+            Ok(names) => names,
+            Err(e) => {
+                entries.push(error(format!(
+                    "{}: could not list indexes: {}",
+                    collection, e
+                )));
+                continue;
+            }
+        };
+        entries.append(&mut classify_collection_indexes(collection, plan, &present));
+    }
+    Ok(entries)
+}
+
+/// Pure classification of one collection's inferred indexes against the names actually present:
+/// present, absent (not built yet or failed), and orphan (an owned index no longer inferred).
+fn classify_collection_indexes(
+    collection: &str,
+    plan: &[crate::doc::index_inference::InferredIndex],
+    present: &[String],
+) -> Vec<DoctorEntry> {
+    use std::collections::BTreeSet;
+    let mut entries = Vec::new();
+    for idx in plan.iter().filter(|i| i.collection == collection) {
+        if present.iter().any(|n| n == &idx.name) {
+            entries.push(ok(format!("{} present on {}", idx.name, collection)));
+        } else {
+            entries.push(skip(format!(
+                "{} absent on {} (building or not yet ensured)",
+                idx.name, collection
+            )));
+        }
+    }
+    let planned: BTreeSet<&str> = plan
+        .iter()
+        .filter(|i| i.collection == collection)
+        .map(|i| i.name.as_str())
+        .collect();
+    for name in present {
+        if crate::doc::index_inference::is_owned_index_name(name)
+            && !planned.contains(name.as_str())
+        {
+            entries.push(skip(format!(
+                "{} on {} is orphaned (owned, no longer inferred); verify nothing else uses it (doc.pipeline aggregations are not analyzed) before dropping",
+                name, collection
+            )));
+        }
+    }
+    entries
+}
+
 fn ok(message: impl Into<String>) -> DoctorEntry {
     DoctorEntry {
         status: DoctorStatus::Ok,
@@ -1218,6 +1337,40 @@ fn build_persistence_entries(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_doc_index_classification_present_absent_orphan() {
+        use crate::doc::index_inference::InferredIndex;
+        let plan = vec![
+            InferredIndex {
+                collection: "transactions".into(),
+                keys: vec![("account_id".into(), true)],
+                name: "idx_transactions_account_id".into(),
+            },
+            InferredIndex {
+                collection: "transactions".into(),
+                keys: vec![("ref".into(), true)],
+                name: "idx_transactions_ref".into(),
+            },
+        ];
+        let present = vec![
+            "_id_".to_string(),                        // default, not owned -> ignored
+            "idx_transactions_account_id".to_string(), // inferred and present
+            "idx_transactions_old".to_string(),        // owned but not in plan -> orphan
+        ];
+        let entries = classify_collection_indexes("transactions", &plan, &present);
+        assert!(entries.iter().any(|e| e.status == DoctorStatus::Ok
+            && e.message.contains("idx_transactions_account_id present")));
+        assert!(
+            entries.iter().any(|e| e.status == DoctorStatus::Skip
+                && e.message.contains("idx_transactions_ref absent"))
+        );
+        assert!(entries.iter().any(|e| e.status == DoctorStatus::Skip
+            && e.message.contains("idx_transactions_old")
+            && e.message.contains("orphaned")));
+        // The default _id_ index is not owned, so it never shows as an orphan.
+        assert!(!entries.iter().any(|e| e.message.contains("_id_")));
+    }
     use crate::ast::{
         AuthProvider, AuthProviderConfig, AuthProviderField, Expression, RouteAuth, SchemaField,
         SchemaType, Statement,
@@ -1243,6 +1396,7 @@ mod tests {
                 auth_providers: HashMap::new(),
             },
             runtime: ProjectRuntime::single(env, HashMap::new()),
+            doc_index_plan: Vec::new(),
         }
     }
 

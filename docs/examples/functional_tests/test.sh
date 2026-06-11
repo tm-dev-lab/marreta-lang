@@ -131,6 +131,12 @@ patch()  { check "$1" PATCH  "$2" "$3" "$4" "${H_JSON[@]}" -d "$5"; }
 get()    { check "$1" GET    "$2" "$3" "$4"; }
 delete() { check "$1" DELETE "$2" "$3" "$4"; }
 
+mongo_eval() {
+    docker compose -f "${SCRIPT_DIR}/docker-compose.yml" exec -T mongodb \
+        mongosh -u marreta -p marreta-secret --authenticationDatabase admin --quiet \
+        marreta_functional --eval "$1"
+}
+
 current_app_logs() {
     if [[ "$DOCKER_MODE" == "true" ]]; then
         docker compose -f "${SCRIPT_DIR}/docker-compose.yml" logs --no-color app 2>/dev/null || true
@@ -2141,6 +2147,34 @@ post "062 — value-ref-persistent object passes" "/relations/value-ref-persiste
 
 # Persistent self-referential schema (tree) as a contract.
 post "062 — self-ref tree ok"                 "/relations/self-ref-tree" 200 '.label == "root"' '{"id":1,"label":"root","parent":0}'
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 67 — Inferred document index (Spec 067)
+#
+# The GET /docs/indexed/:id route filters ft_index_demo by account_id and sorts by
+# _id desc. The runtime infers the ESR composite {account_id:1, _id:-1} from that code
+# (no declaration) and ensures it in MongoDB in the background at serve startup. Assert
+# the index is physically present, by its owned name and exact keys, via getIndexes.
+# Retry while the background build settles.
+# ─────────────────────────────────────────────────────────────────────────────
+section "67. Inferred document index (Spec 067)"
+INFERRED_IDX=""
+for _ in $(seq 1 20); do
+    INFERRED_IDX=$(mongo_eval 'db.ft_index_demo.getIndexes().map(i => i.name + ":" + JSON.stringify(i.key)).join(",")' 2>/dev/null || true)
+    if [[ "$INFERRED_IDX" == *"idx_ft_index_demo_account_id__id_desc"* \
+        && "$INFERRED_IDX" == *'"account_id":1'* && "$INFERRED_IDX" == *'"_id":-1'* ]]; then
+        break
+    fi
+    sleep 0.5
+done
+if [[ "$INFERRED_IDX" == *"idx_ft_index_demo_account_id__id_desc"* \
+    && "$INFERRED_IDX" == *'"account_id":1'* && "$INFERRED_IDX" == *'"_id":-1'* ]]; then
+    echo -e "  ${GREEN}PASS${RESET} inferred composite index present in MongoDB (${INFERRED_IDX})"
+    PASS=$((PASS + 1))
+else
+    echo -e "  ${RED}FAIL${RESET} inferred index missing or wrong keys — got: ${INFERRED_IDX:-<none>}"
+    FAIL=$((FAIL + 1))
+fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Summary

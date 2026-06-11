@@ -51,6 +51,16 @@ code updates the authored guide under `docs/guide/` in the same change. This Doc
 axis sits alongside the VS Code extension and e2e axes in the per-spec coverage analysis,
 and `.github/PULL_REQUEST_TEMPLATE.md` carries the checklist so it is not skipped at review.
 
+Rewind versus supersede. A spec that has **never reached a release** may be **rewound** rather
+than superseded forward: revert the branch to before its delivery (force-push), reuse the spec
+number for the corrected design, and preserve the reverted objects under a tag so nothing is lost.
+A spec that has **shipped in a release** gets a **forward superseding spec** instead (the Spec 052
+supersedes Spec 047 precedent), because something out there may have consumed the old state. Before
+a rewind, verify no release tag descends from the commits being removed; if one does, the rewind is
+vetoed. The reverted spec records a short History note (what was reverted and why) so the U-turn
+reads as learning, not churn. Spec 067 was the first rewind under this rule (declarative document
+indexes reverted in favor of inference; reverted objects at tag `pre-067-revert`).
+
 ### 1.4 Active Follow-Ups
 
 - No active implementation follow-up is currently required for specs 026-059.
@@ -150,6 +160,14 @@ and `.github/PULL_REQUEST_TEMPLATE.md` carries the checklist so it is not skippe
   authenticated MongoDB healthcheck in the `marreta init` docker-compose template (closing the
   `docker compose up --wait` race). Cross-repo follow-up: re-sync the site initializer fixtures
   (Spec 008) since `marreta init`'s compose changed.
+- Spec 067 is delivered: inferred document indexes. The runtime infers each collection's index
+  from its query surface (the `where`/`order` shape of every `doc.<collection>` / `doc.query("col")`
+  pipeline, by the ESR rule with prefix dedup) and ensures it in MongoDB in the background at
+  `serve` startup, with no declaration, no `doc:` marker, and no migration. It superseded a reverted
+  pre-release declarative approach under the §1.3 rewind rule (reverted objects at tag
+  `pre-067-revert`); the `unique_violation` 409 mapping and the doc-driver ensure machinery were
+  preserved by cherry-pick. Cross-repo follow-up: update the "Spec 067" references in
+  marreta-lang-stealth (security section, backlog) from the declarative meaning to the inference one.
 - The remaining public-v1 gaps should now be tracked as new explicit specs,
   not as open follow-ups from the delivered block.
 

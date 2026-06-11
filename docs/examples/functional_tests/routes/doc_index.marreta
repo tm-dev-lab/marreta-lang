@@ -1,0 +1,16 @@
+# ═════════════════════════════════════════════════════════════════════════════
+# SECTION 25.5 — Inferred document indexes (Spec 067)
+#
+# A filtered + sorted query whose composite index the runtime infers from this code
+# (no declaration) and ensures in MongoDB at serve startup. The functional suite
+# asserts the index exists via getIndexes: idx_ft_index_demo_account_id__id_desc,
+# keys { account_id: 1, _id: -1 } (the ESR composite of the Spec 066 shape).
+# ═════════════════════════════════════════════════════════════════════════════
+
+route GET "/docs/indexed/:id"
+    rows = doc.ft_index_demo
+    >> where("account_id" == params.id)
+    >> order("_id", "desc")
+    >> limit(20)
+    >> fetch_all
+    reply 200, { items: rows }

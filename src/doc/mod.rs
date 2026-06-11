@@ -1,4 +1,6 @@
 pub mod bson;
+/// Static inference of document indexes from the query surface (Spec 067).
+pub mod index_inference;
 pub mod mongodb;
 pub mod query;
 

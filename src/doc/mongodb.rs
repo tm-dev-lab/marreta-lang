@@ -79,6 +79,28 @@ pub trait DocDriver: Send + Sync {
     /// Each stage map must have exactly one key (the stage name, without `$`).
     /// Called by `doc.pipeline(collection, list)`.
     async fn raw_pipeline(&self, collection: &str, stages: &[Value]) -> DocResult<Vec<DocRow>>;
+
+    // ─── Index management (Spec 067) ──────────────────────────────────────
+
+    /// Ensure an index (possibly composite, possibly unique) exists on the collection, by name.
+    /// Idempotent: a no-op if it already exists. The default is a no-op so drivers without index
+    /// support (test mocks, in-memory) are unaffected.
+    async fn ensure_index(
+        &self,
+        collection: &str,
+        keys: &[(String, bool)],
+        unique: bool,
+        name: &str,
+    ) -> DocResult<()> {
+        let _ = (collection, keys, unique, name);
+        Ok(())
+    }
+
+    /// List the names of existing indexes on the collection. Default empty.
+    async fn list_index_names(&self, collection: &str) -> DocResult<Vec<String>> {
+        let _ = collection;
+        Ok(Vec::new())
+    }
 }
 
 // ─── DocEngine ────────────────────────────────────────────────────────────────
@@ -232,6 +254,12 @@ impl MongoDbDriver {
 
 pub fn translate_mongo_error_op(err: mongodb::error::Error, operation: &str) -> MarretaError {
     let msg = err.to_string();
+    // Duplicate key (unique index violation, code 11000) -> dedicated error, surfaced as 409.
+    if let ErrorKind::Write(mongodb::error::WriteFailure::WriteError(ref write_error)) = *err.kind {
+        if let Some(violation) = mongo_unique_violation(write_error.code, &msg, operation) {
+            return violation;
+        }
+    }
     let code = match *err.kind {
         ErrorKind::Authentication { .. } => "auth_error",
         ErrorKind::ServerSelection { .. } => "connection_error",
@@ -243,6 +271,19 @@ pub fn translate_mongo_error_op(err: mongodb::error::Error, operation: &str) -> 
     MarretaError::DbError {
         message: format!("mongodb error [{}]: {}", code, msg),
         operation: operation.to_string(),
+    }
+}
+
+/// Classify a MongoDB write error code as a unique-violation error if it is the duplicate-key
+/// code (11000). Pure and testable without a live connection.
+fn mongo_unique_violation(write_code: i32, msg: &str, operation: &str) -> Option<MarretaError> {
+    if write_code == 11000 {
+        Some(MarretaError::UniqueConstraintViolation {
+            message: format!("mongodb duplicate key: {}", msg),
+            operation: operation.to_string(),
+        })
+    } else {
+        None
     }
 }
 
@@ -663,6 +704,47 @@ impl DocDriver for MongoDbDriver {
         }
         Ok(rows)
     }
+
+    async fn ensure_index(
+        &self,
+        collection: &str,
+        keys: &[(String, bool)],
+        unique: bool,
+        name: &str,
+    ) -> DocResult<()> {
+        let coll = self
+            .client
+            .database(&self.db_name)
+            .collection::<bson::Document>(collection);
+        let mut keys_doc = bson::Document::new();
+        for (field, ascending) in keys {
+            keys_doc.insert(field.clone(), if *ascending { 1i32 } else { -1i32 });
+        }
+        let options = mongodb::options::IndexOptions::builder()
+            .unique(unique)
+            .name(name.to_string())
+            .build();
+        let model = mongodb::IndexModel::builder()
+            .keys(keys_doc)
+            .options(options)
+            .build();
+        let op = format!("doc.{}.ensure_index", collection);
+        coll.create_index(model)
+            .await
+            .map_err(|e| translate_mongo_error_op(e, &op))?;
+        Ok(())
+    }
+
+    async fn list_index_names(&self, collection: &str) -> DocResult<Vec<String>> {
+        let coll = self
+            .client
+            .database(&self.db_name)
+            .collection::<bson::Document>(collection);
+        let op = format!("doc.{}.list_indexes", collection);
+        coll.list_index_names()
+            .await
+            .map_err(|e| translate_mongo_error_op(e, &op))
+    }
 }
 
 // ─── Layer 4: Pipeline Stage Translation ─────────────────────────────────────
@@ -1020,6 +1102,15 @@ fn build_query_options(q: &DocQueryState) -> mongodb::options::FindOptions {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_mongo_unique_violation_classifies_code_11000() {
+        assert!(matches!(
+            mongo_unique_violation(11000, "E11000 dup key", "doc.users.save"),
+            Some(MarretaError::UniqueConstraintViolation { .. })
+        ));
+        assert!(mongo_unique_violation(2, "other write error", "doc.users.save").is_none());
+    }
 
     #[test]
     fn test_value_to_doc_row_from_map() {
