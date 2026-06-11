@@ -177,6 +177,18 @@ indexes reverted in favor of inference; reverted objects at tag `pre-067-revert`
   objective DX measurement (total SLOC, dependencies/footprint, capability matrix). Re-run post-067
   on a dedicated VM; the business/wiring split was dropped and the whole `results/` tree is
   regenerable (`RESULTS.md`/`METHODOLOGY.md`/`DX.md` are the record). No runtime change.
+- Spec 068 is proposed: reserved-word normalization. Reserve the namespaces `doc` and `feature` and
+  the `env` accessor at the lexer level (peers of `db`/`cache`/`queue`), so a documented namespace can
+  no longer be shadowed by a variable, via a normalize-back parser - the new token only blocks a
+  binder position, while every name position (after `.`, map key, schema field, named arg, `select`
+  column) is normalized back to today's AST so nothing downstream changes. Includes auditing and
+  closing the pre-existing name-position holes for the already-reserved tokens, a catalog→token
+  invariant (every namespace has a lexer token; `env` excepted as a non-catalog accessor), and a
+  sweep of our own corpus plus the `marreta init` templates. Post-rewind trim of the pre-067 spec:
+  the declarative `index`/`unique` keywords and the `doc:` marker are gone, so that half is dropped.
+- Follow-up (sister lint of 068): `shadows-injected-binding` - warn when a local shadows an injected
+  binding (`params`, `auth`, `payload`, ...). A lint concern, not reserved-word reservation; its own
+  small spec.
 - The remaining public-v1 gaps should now be tracked as new explicit specs,
   not as open follow-ups from the delivered block.
 
