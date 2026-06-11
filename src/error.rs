@@ -77,6 +77,15 @@ pub enum MarretaError {
     UnexpectedEndOfInput {
         expected: String,
     },
+    /// Spec 068: a reserved word (an infrastructure namespace, the `env` accessor, a type
+    /// token, or a structural keyword) was used in a binder/declaration position, where only a
+    /// fresh identifier is allowed. Reserved words are still free in every name position
+    /// (after `.`, a map key, a schema field, a named arg, a `select` column).
+    ReservedWord {
+        word: String,
+        line: usize,
+        column: usize,
+    },
 
     // --- Interpreter Errors ---
     UndefinedVariable {
@@ -247,6 +256,42 @@ pub enum MarretaError {
     },
 }
 
+/// Spec 068: the human-readable role of a reserved word, used to explain why it cannot be a
+/// name in a binder position. Namespaces and the `env` accessor get a specific phrase; every
+/// other reserved word (structural keywords, type tokens) falls back to `None`.
+fn reserved_word_role(word: &str) -> Option<&'static str> {
+    match word {
+        "doc" => Some("the document database namespace"),
+        "feature" => Some("the feature-flag namespace"),
+        "env" => Some("the environment accessor"),
+        "db" => Some("the database namespace"),
+        "queue" => Some("the queue namespace"),
+        "topic" => Some("the topic namespace"),
+        "cache" => Some("the cache namespace"),
+        "fs" => Some("the filesystem namespace"),
+        "json" => Some("the JSON namespace"),
+        "base64" => Some("the base64 namespace"),
+        "uuid" => Some("the UUID namespace"),
+        "log" => Some("the log namespace"),
+        "time" => Some("the time namespace"),
+        "math" => Some("the math namespace"),
+        "http_client" => Some("the HTTP client namespace"),
+        _ => None,
+    }
+}
+
+/// Spec 068: the dedicated reserved-word message, e.g.
+/// `'doc' is a reserved word (the document database namespace); rename the variable.`
+fn reserved_word_message(word: &str) -> String {
+    match reserved_word_role(word) {
+        Some(role) => format!(
+            "'{}' is a reserved word ({}); rename the variable.",
+            word, role
+        ),
+        None => format!("'{}' is a reserved word; rename the variable.", word),
+    }
+}
+
 impl fmt::Display for MarretaError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -310,6 +355,15 @@ impl fmt::Display for MarretaError {
             }
             Self::UnexpectedEndOfInput { expected } => {
                 write!(f, "Error: unexpected end of input, expected {}", expected)
+            }
+            Self::ReservedWord { word, line, column } => {
+                write!(
+                    f,
+                    "Error at {}:{}: {}",
+                    line,
+                    column,
+                    reserved_word_message(word)
+                )
             }
 
             // Interpreter
@@ -655,6 +709,7 @@ impl MarretaError {
             Self::UnexpectedEndOfInput { expected } => {
                 format!("unexpected end of input, expected {}", expected)
             }
+            Self::ReservedWord { word, .. } => reserved_word_message(word),
             _ => self.to_string(),
         }
     }
@@ -668,6 +723,7 @@ impl MarretaError {
             | Self::UnexpectedIndentation { line }
             | Self::InvalidNumber { line, .. }
             | Self::UnexpectedToken { line, .. }
+            | Self::ReservedWord { line, .. }
             | Self::UndefinedVariable { line, .. }
             | Self::UndefinedTask { line, .. }
             | Self::TypeError { line, .. }
@@ -688,6 +744,7 @@ impl MarretaError {
             | Self::UnterminatedString { column, .. }
             | Self::InvalidNumber { column, .. }
             | Self::UnexpectedToken { column, .. }
+            | Self::ReservedWord { column, .. }
             | Self::UndefinedVariable { column, .. }
             | Self::UndefinedTask { column, .. }
             | Self::TypeError { column, .. }

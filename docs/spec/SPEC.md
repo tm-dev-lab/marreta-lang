@@ -177,15 +177,24 @@ indexes reverted in favor of inference; reverted objects at tag `pre-067-revert`
   objective DX measurement (total SLOC, dependencies/footprint, capability matrix). Re-run post-067
   on a dedicated VM; the business/wiring split was dropped and the whole `results/` tree is
   regenerable (`RESULTS.md`/`METHODOLOGY.md`/`DX.md` are the record). No runtime change.
-- Spec 068 is proposed: reserved-word normalization. Reserve the namespaces `doc` and `feature` and
-  the `env` accessor at the lexer level (peers of `db`/`cache`/`queue`), so a documented namespace can
-  no longer be shadowed by a variable, via a normalize-back parser - the new token only blocks a
-  binder position, while every name position (after `.`, map key, schema field, named arg, `select`
-  column) is normalized back to today's AST so nothing downstream changes. Includes auditing and
-  closing the pre-existing name-position holes for the already-reserved tokens, a catalog→token
-  invariant (every namespace has a lexer token; `env` excepted as a non-catalog accessor), and a
-  sweep of our own corpus plus the `marreta init` templates. Post-rewind trim of the pre-067 spec:
-  the declarative `index`/`unique` keywords and the `doc:` marker are gone, so that half is dropped.
+- Spec 068 is delivered: reserved-word normalization. The namespaces `doc` and `feature` and the
+  `env` accessor are reserved at the lexer level (peers of `db`/`cache`/`queue`), so a documented
+  namespace can no longer be shadowed by a variable, via a normalize-back parser - the new token
+  only blocks a binder position (with a dedicated `'doc' is a reserved word ...; rename the variable.`
+  error at every binder: assignment, task name, task parameter, map/reduce variable, schema name,
+  auth provider name, consumer `take` binding, and the route path parameter, the last blocked at
+  load since the name lives inside the route string literal). Every name position (after `.`, map
+  key, schema field name, named-arg name, `select` column) is normalized back to today's AST through
+  one shared `expect_name` helper, which also closed the pre-existing holes where the already-reserved
+  tokens (`db`, `date`, ...) were missing from each position's hand-rolled list. A schema field named
+  `doc`/`feature`/`env` is allowed (they are not directives); `db` stays unusable there because the
+  `db:` directive claims that line. A catalog→token invariant test asserts every `CatalogKind::Namespace`
+  has a lexer token (`env` excepted as a non-catalog accessor, tested directly), and a table test
+  freezes every reserved token × every name position (positive) and every binder position (negative).
+  Our own corpus and the `marreta init` templates were swept (no binder uses found); the VS Code
+  extension already tokenizes/colors the words (grammar) and completes them (catalog-driven). Post-rewind
+  trim of the pre-067 spec: the declarative `index`/`unique` keywords and the `doc:` marker are gone,
+  so that half is dropped.
 - Follow-up (sister lint of 068): `shadows-injected-binding` - warn when a local shadows an injected
   binding (`params`, `auth`, `payload`, ...). A lint concern, not reserved-word reservation; its own
   small spec.
@@ -1956,7 +1965,10 @@ Marreta Lang has a minimal set of reserved words:
 **Schema composition (v0.4.0):** `of` — used in `list of <Type>` typed list declarations
 
 ### Infrastructure
-`db`, `doc`, `cache`, `queue`, `transaction`
+`db`, `doc`, `feature`, `cache`, `queue`, `topic`, `transaction`, and the `env` accessor — all
+reserved at the lexer (Spec 068), so a variable cannot shadow a documented namespace. They are free
+in a name position (after `.`, a map key, a schema field name, a named-arg name, a `select` column)
+and blocked only as a binder. (The full two-layer reserved/contextual writeup lands with Spec 069.)
 
 ### HTTP Verbs
 `GET`, `POST`, `PUT`, `PATCH`, `DELETE`

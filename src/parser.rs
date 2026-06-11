@@ -83,6 +83,11 @@ impl Parser {
             TokenKind::Identifier(_) if self.peek_kind() == Some(&TokenKind::Assign) => {
                 self.parse_assignment()
             }
+            // Spec 068: `<reserved> = ...` (e.g. `doc = 1`) routes to the assignment path so the
+            // binder fails with the dedicated reserved-word error, not a generic parse error.
+            _ if self.is_reserved_word_token() && self.peek_kind() == Some(&TokenKind::Assign) => {
+                self.parse_assignment()
+            }
             // An Indent can only legitimately follow a block opener (consumed by expect(Indent)).
             // Reaching one here means the line is indented deeper than its block expects, so
             // report it as an indentation error instead of a generic "expected expression".
@@ -121,6 +126,11 @@ impl Parser {
                 Ok(Statement::Export(Box::new(inner)))
             }
             TokenKind::Identifier(_) if self.peek_kind() == Some(&TokenKind::Assign) => {
+                let inner = self.parse_assignment()?;
+                Ok(Statement::Export(Box::new(inner)))
+            }
+            // Spec 068: `export <reserved> = ...` blocks with the dedicated reserved-word error.
+            _ if self.is_reserved_word_token() && self.peek_kind() == Some(&TokenKind::Assign) => {
                 let inner = self.parse_assignment()?;
                 Ok(Statement::Export(Box::new(inner)))
             }
@@ -373,6 +383,15 @@ impl Parser {
             TokenKind::Identifier(name) => {
                 self.advance();
                 name
+            }
+            // Spec 068: the consumer `take` binding is a binder, so a reserved word fails with the
+            // dedicated reserved-word error rather than the generic "expected identifier".
+            _ if self.is_reserved_word_token() => {
+                return Err(MarretaError::ReservedWord {
+                    word: self.reserved_word_as_name().unwrap(),
+                    line: self.current().line,
+                    column: self.current().column,
+                });
             }
             _ => {
                 return Err(MarretaError::UnexpectedToken {
@@ -795,8 +814,7 @@ impl Parser {
         let mut fields = Vec::new();
         self.skip_newlines();
         while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
-            let (field_name, field_line, field_column) =
-                self.expect_identifier_or_keyword_as_key()?;
+            let (field_name, field_line, field_column) = self.expect_name()?;
             self.expect(TokenKind::Colon)?;
             let value = self.parse_expression(PREC_NONE)?;
             fields.push(AuthProviderField {
@@ -856,13 +874,18 @@ impl Parser {
             {
                 self.advance();
                 self.expect(TokenKind::Colon)?;
-                let (table_name, _, _) = self.expect_identifier()?;
+                // The `db:` directive value is the physical table name (a reference, not a binder),
+                // so a reserved word is tolerated here just like any other name position (Spec 068).
+                let (table_name, _, _) = self.expect_name()?;
                 db_table = Some(table_name);
                 self.skip_newlines();
                 continue;
             }
 
-            let (raw_name, _, _) = self.expect_identifier()?;
+            // A schema field name is a name position: a reserved word like `doc`/`feature`/`env`
+            // is a valid field name (Spec 068). `db` stays unusable here only because the `db:`
+            // directive already claims that line, handled above before we reach this read.
+            let (raw_name, _, _) = self.expect_name()?;
             // `email?` → optional field; strip the trailing `?` from the name
             let (field_name, optional) = if raw_name.ends_with('?') {
                 (raw_name.trim_end_matches('?').to_string(), true)
@@ -1475,6 +1498,42 @@ impl Parser {
                 self.advance();
                 Ok(Expression::Identifier("http_client".into()))
             }
+            // Spec 068: the type tokens are Layer-1 reserved (they cannot be a binder), but like
+            // every reserved word they are free in a name position. In expression position they
+            // normalize back to identifiers, so a value/column named `date`, `string`, etc. - e.g.
+            // `select(date)` - reads as that name instead of failing as "expected expression".
+            TokenKind::TypeString => {
+                self.advance();
+                Ok(Expression::Identifier("string".into()))
+            }
+            TokenKind::TypeInteger => {
+                self.advance();
+                Ok(Expression::Identifier("integer".into()))
+            }
+            TokenKind::TypeFloat => {
+                self.advance();
+                Ok(Expression::Identifier("float".into()))
+            }
+            TokenKind::TypeBoolean => {
+                self.advance();
+                Ok(Expression::Identifier("boolean".into()))
+            }
+            TokenKind::TypeInstant => {
+                self.advance();
+                Ok(Expression::Identifier("instant".into()))
+            }
+            TokenKind::TypeDate => {
+                self.advance();
+                Ok(Expression::Identifier("date".into()))
+            }
+            TokenKind::TypeDuration => {
+                self.advance();
+                Ok(Expression::Identifier("duration".into()))
+            }
+            TokenKind::TypeInterval => {
+                self.advance();
+                Ok(Expression::Identifier("interval".into()))
+            }
 
             // `fail CODE, MSG` used in expression position (e.g. rescue handler)
             TokenKind::Fail => {
@@ -1552,7 +1611,7 @@ impl Parser {
             // Property access / method call: `.field` or `.method(args)`
             TokenKind::Dot => {
                 self.advance(); // consume `.`
-                let (name, _, _) = self.parse_member_name()?;
+                let (name, _, _) = self.expect_name()?;
                 if self.check(&TokenKind::LeftParen) {
                     self.advance(); // consume `(`
                     let arguments = self.parse_argument_list()?;
@@ -1896,7 +1955,7 @@ impl Parser {
         while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
             // Map keys may be plain identifiers OR reserved keywords used as keys
             // (e.g. `{ match: ... }`, `{ limit: ... }`, `{ count: ... }`).
-            let (key, _, _) = self.expect_identifier_or_keyword_as_key()?;
+            let (key, _, _) = self.expect_name()?;
             self.expect(TokenKind::Colon)?;
             let value = self.parse_expression(PREC_NONE)?;
             pairs.push((key, value));
@@ -1920,7 +1979,7 @@ impl Parser {
             if self.check(&TokenKind::RightBrace) {
                 break;
             }
-            let (key, _, _) = self.expect_identifier_or_keyword_as_key()?;
+            let (key, _, _) = self.expect_name()?;
             self.expect(TokenKind::Colon)?;
             let value = self.parse_expression(PREC_NONE)?;
             fields.push((key, value));
@@ -1956,19 +2015,17 @@ impl Parser {
         }
 
         loop {
-            // Check for named argument: `name: expr`
-            // Allows some keywords as arg names: `as:`, `on:` (used in join/pipeline ops)
-            let named_arg_name: Option<String> = match self.current_kind().clone() {
-                TokenKind::Identifier(ref n) if self.peek_kind() == Some(&TokenKind::Colon) => {
-                    Some(n.clone())
+            // Check for named argument: `name: expr` (e.g. `select(net: "total * 0.9")`,
+            // `where(active: true)`). A named-arg name is a name position, so any reserved word is
+            // allowed there - an identifier, or a reserved word used as a name (Spec 068). This
+            // subsumes the former hand-picked `as:`/`on:` special-cases.
+            let named_arg_name: Option<String> = if self.peek_kind() == Some(&TokenKind::Colon) {
+                match self.current_kind().clone() {
+                    TokenKind::Identifier(ref n) => Some(n.clone()),
+                    _ => self.reserved_word_as_name(),
                 }
-                TokenKind::As if self.peek_kind() == Some(&TokenKind::Colon) => {
-                    Some("as".to_string())
-                }
-                TokenKind::On if self.peek_kind() == Some(&TokenKind::Colon) => {
-                    Some("on".to_string())
-                }
-                _ => None,
+            } else {
+                None
             };
             if let Some(name) = named_arg_name {
                 self.advance(); // consume identifier / keyword
@@ -1996,13 +2053,15 @@ impl Parser {
         Ok(args)
     }
 
-    fn parse_member_name(&mut self) -> Result<(String, usize, usize), MarretaError> {
+    /// Spec 068: the canonical reader for a **name position** (after `.`, a map key, a schema
+    /// field name, a `db:` table name, a named-arg name). A name is just an identifier or any
+    /// reserved word used as a name - reserved words only block in a binder position, never here.
+    /// The keyword round-trip is the single source so every name position accepts the same set,
+    /// closing the holes where each position carried its own drifting list (missing `db`, `date`,
+    /// and now `doc`/`feature`/`env`).
+    fn expect_name(&mut self) -> Result<(String, usize, usize), MarretaError> {
         let line = self.current().line;
         let column = self.current().column;
-        // A member name after `.` is just a name: an identifier, or any reserved word used as a
-        // name (Spec 068 - reserved words only block in a binder position, never here). The keyword
-        // round-trip is the single source so every name position accepts the same set, closing the
-        // holes where this list was missing tokens like `db` or `date`.
         if let TokenKind::Identifier(name) = self.current_kind().clone() {
             self.advance();
             return Ok((name, line, column));
@@ -2029,6 +2088,14 @@ impl Parser {
             Some(kind) if &kind == self.current_kind() => Some(lexeme),
             _ => None,
         }
+    }
+
+    /// Spec 068: whether the current token is a reserved word (a word `keyword_lookup` maps to
+    /// exactly this kind). Used by the statement dispatcher to route `<reserved> =` into the
+    /// assignment path so the binder fails with the dedicated reserved-word error rather than a
+    /// confusing "expected expression".
+    fn is_reserved_word_token(&self) -> bool {
+        self.reserved_word_as_name().is_some()
     }
 
     // =========================================================================
@@ -2094,20 +2161,29 @@ impl Parser {
                 expected: "identifier".into(),
             });
         }
-        match self.current_kind().clone() {
-            TokenKind::Identifier(name) => {
-                let line = self.current().line;
-                let col = self.current().column;
-                self.advance();
-                Ok((name, line, col))
-            }
-            _ => Err(MarretaError::UnexpectedToken {
-                expected: "identifier".into(),
-                got_lexeme: self.current().lexeme.clone(),
+        if let TokenKind::Identifier(name) = self.current_kind().clone() {
+            let line = self.current().line;
+            let col = self.current().column;
+            self.advance();
+            return Ok((name, line, col));
+        }
+        // Spec 068: a reserved word in a binder position fails with a dedicated message (not the
+        // generic "expected identifier"), so the developer learns the word is reserved and must be
+        // renamed. Name positions never reach here - they go through `expect_name`, which tolerates
+        // reserved words.
+        if let Some(word) = self.reserved_word_as_name() {
+            return Err(MarretaError::ReservedWord {
+                word,
                 line: self.current().line,
                 column: self.current().column,
-            }),
+            });
         }
+        Err(MarretaError::UnexpectedToken {
+            expected: "identifier".into(),
+            got_lexeme: self.current().lexeme.clone(),
+            line: self.current().line,
+            column: self.current().column,
+        })
     }
 
     fn check_identifier_lexeme(&self, expected: &str) -> bool {
@@ -2129,69 +2205,6 @@ impl Parser {
                 line: self.current().line,
                 column: self.current().column,
             })
-        }
-    }
-
-    /// Like `expect_identifier` but also accepts reserved keyword tokens as map keys.
-    /// Returns the keyword's lexeme as the key string.
-    fn expect_identifier_or_keyword_as_key(
-        &mut self,
-    ) -> Result<(String, usize, usize), MarretaError> {
-        if self.is_at_end() {
-            return Err(MarretaError::UnexpectedEndOfInput {
-                expected: "identifier".into(),
-            });
-        }
-        let line = self.current().line;
-        let col = self.current().column;
-        let lexeme = self.current().lexeme.clone();
-        match self.current_kind().clone() {
-            TokenKind::Identifier(name) => {
-                self.advance();
-                Ok((name, line, col))
-            }
-            // Allow any keyword to be used as a map key
-            TokenKind::Match
-            | TokenKind::If
-            | TokenKind::Else
-            | TokenKind::True
-            | TokenKind::False
-            | TokenKind::Null
-            | TokenKind::And
-            | TokenKind::Or
-            | TokenKind::Not
-            | TokenKind::As
-            | TokenKind::Of
-            | TokenKind::Skip
-            | TokenKind::Map
-            | TokenKind::Keep
-            | TokenKind::Require
-            | TokenKind::Reject
-            | TokenKind::Task
-            | TokenKind::Schema
-            | TokenKind::Export
-            | TokenKind::Fallback
-            | TokenKind::Listen
-            | TokenKind::Cache
-            | TokenKind::Fs
-            | TokenKind::Json
-            | TokenKind::Base64
-            | TokenKind::Log
-            | TokenKind::Time
-            | TokenKind::Math
-            | TokenKind::HttpClient
-            | TokenKind::Transaction
-            | TokenKind::Raise
-            | TokenKind::Rescue => {
-                self.advance();
-                Ok((lexeme, line, col))
-            }
-            _ => Err(MarretaError::UnexpectedToken {
-                expected: "identifier".into(),
-                got_lexeme: lexeme,
-                line,
-                column: col,
-            }),
         }
     }
 
@@ -4354,6 +4367,131 @@ mod tests_errors {
             ));
         } else {
             panic!("expected OnQueue with guarded Nack requeue");
+        }
+    }
+
+    // =========================================================================
+    // Spec 068 — reserved-word normalization table tests
+    // =========================================================================
+
+    /// The Layer-1 reserved words this spec governs: the infrastructure namespaces, the `env`
+    /// accessor, and the type tokens. Each must be free in every name position and blocked in
+    /// every binder position. (`db` is the one exception in a schema field - the `db:` directive
+    /// already claims that line - handled below.)
+    const RESERVED_WORDS: &[&str] = &[
+        "db",
+        "doc",
+        "feature",
+        "cache",
+        "queue",
+        "topic",
+        "fs",
+        "json",
+        "base64",
+        "uuid",
+        "log",
+        "time",
+        "math",
+        "http_client",
+        "env",
+        "string",
+        "integer",
+        "float",
+        "boolean",
+        "instant",
+        "date",
+        "duration",
+        "interval",
+    ];
+
+    #[test]
+    fn reserved_words_are_free_in_every_name_position() {
+        for &w in RESERVED_WORDS {
+            // (1) member name after `.`
+            let prog = parse_ok(&format!("r = payload.{w}"));
+            match &prog[0] {
+                Statement::Assignment {
+                    value: Expression::PropertyAccess { property, .. },
+                    ..
+                } => assert_eq!(property, w, "member name `{w}`"),
+                other => panic!("member name `{w}`: {other:?}"),
+            }
+
+            // (2) map key
+            let prog = parse_ok(&format!("r = {{ {w}: 1 }}"));
+            match &prog[0] {
+                Statement::Assignment {
+                    value: Expression::MapLiteral(pairs),
+                    ..
+                } => assert_eq!(pairs[0].0, w, "map key `{w}`"),
+                other => panic!("map key `{w}`: {other:?}"),
+            }
+
+            // (3) named-argument name
+            let prog = parse_ok(&format!("r = f({w}: 1)"));
+            match &prog[0] {
+                Statement::Assignment {
+                    value: Expression::FunctionCall { arguments, .. },
+                    ..
+                } => match &arguments[0] {
+                    Argument::Named { name, .. } => assert_eq!(name, w, "named arg `{w}`"),
+                    other => panic!("named arg `{w}`: {other:?}"),
+                },
+                other => panic!("named arg call `{w}`: {other:?}"),
+            }
+
+            // (4) positional argument / `select(...)` column — normalizes back in expression position
+            let prog = parse_ok(&format!("r = f({w})"));
+            match &prog[0] {
+                Statement::Assignment {
+                    value: Expression::FunctionCall { arguments, .. },
+                    ..
+                } => match &arguments[0] {
+                    Argument::Positional(Expression::Identifier(name)) => {
+                        assert_eq!(name, w, "select column `{w}`")
+                    }
+                    other => panic!("select column `{w}`: {other:?}"),
+                },
+                other => panic!("select column call `{w}`: {other:?}"),
+            }
+
+            // (5) schema field name — `db` excluded: the `db:` directive claims that line
+            if w != "db" {
+                let prog = parse_ok(&format!("schema S\n    {w}: string\n"));
+                match &prog[0] {
+                    Statement::Schema { fields, .. } => {
+                        assert_eq!(fields[0].name, w, "schema field `{w}`")
+                    }
+                    other => panic!("schema field `{w}`: {other:?}"),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn reserved_words_are_blocked_in_every_binder_position() {
+        for &w in RESERVED_WORDS {
+            let cases = [
+                format!("{w} = 1"),                                           // assignment target
+                format!("export {w} = 1"),                                    // exported assignment
+                format!("task {w}() => 1"),                                   // task name
+                format!("task f({w}) => 1"),                                  // task parameter
+                format!("schema {w}\n    a: string\n"),                       // schema name
+                format!("auth jwt {w} {{ issuer: env.X }}\n"),                // auth provider name
+                format!("r = items >> map {w}\n    keep 1\n"),                // map block variable
+                format!("r = items >> reduce(0) {w}, item => 1"),             // reduce accumulator
+                format!("r = items >> reduce(0) acc, {w} => 1"),              // reduce item
+                format!("route POST \"/x\" take {w}\n    reply 200, null\n"), // route take binding
+                format!("on queue \"q\" take {w}\n    x = 1\n"), // consumer take binding
+            ];
+            for src in cases {
+                match parse_err(&src) {
+                    MarretaError::ReservedWord { word, .. } => {
+                        assert_eq!(word, w, "wrong word for `{src}`")
+                    }
+                    other => panic!("expected ReservedWord for `{src}`, got {other:?}"),
+                }
+            }
         }
     }
 }

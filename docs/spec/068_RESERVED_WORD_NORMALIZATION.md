@@ -1,6 +1,6 @@
 # 068 - Reserved Word Normalization
 
-> Status: Proposed
+> Status: Delivered
 > Type: Language syntax (lexer/parser) + tooling
 > Scope: Reserve the infrastructure namespaces `doc` and `feature` and the `env` accessor at the
 > lexer level, the same way `db`/`cache`/`queue` already are, so a documented namespace can no longer
@@ -154,3 +154,29 @@ so the invariant does not cover it; `env`'s token is added and tested directly.
 ## P.S. Do not forget the docs of record
 
 On delivery, update both `CHANGELOG.md` and `docs/spec/SPEC.md`. See SPEC.md section 1.3.
+
+---
+
+## Delivery notes
+
+Foundation (lexer tokens + normalize-back at the primary/member positions + the shared
+`reserved_word_as_name` round-trip) landed at `8dd8dda`. This delivery completed it:
+
+- **Dedicated error** (`src/error.rs`): `MarretaError::ReservedWord` with a per-namespace role
+  message, wired into `expect_identifier` so every strict binder fails uniformly; the statement
+  dispatcher routes `<reserved> = ...` (and `export <reserved> = ...`) into the assignment path so
+  the assignment target blocks too. The consumer `take` binding got an explicit reserved-word arm.
+- **Name positions** (`src/parser.rs`): unified on one tolerant `expect_name` (identifier or any
+  reserved word as a name), replacing the after-`.`, map-key, schema-field, `db:`-table, and
+  named-arg hand-rolled lists; the type tokens normalize back in expression position (`select(date)`).
+  The former `expect_identifier_or_keyword_as_key` was removed as redundant.
+- **Route path parameter** (`src/route_loader.rs`): `validate_path_params` rejects a reserved
+  `:param` at load with the same dedicated error (load test, not parse).
+- **Tests**: catalog→token invariant + `env`-direct (`src/tooling/catalog.rs`); the reserved-word
+  table test over every name position (positive) and binder position (negative) plus the load-time
+  path-param test (`src/parser.rs`, `src/route_loader.rs`). Unit suite 1542 green.
+- **Corpus + extension**: swept `docs/examples`, `docs/benchmarks`, `e2e`, and `src/init.rs`
+  templates — no binder uses of `doc`/`feature`/`env`. The VS Code grammar already lists them as
+  namespaces and completions are catalog-driven, so no extension change was needed.
+- **Gates**: `fmt`, `clippy -D warnings`, unit suite, `functional_tests` 567/567,
+  `migrations_functional` PASS, `e2e` PASS (+18 live smoke), extension `node --check` + VSIX.

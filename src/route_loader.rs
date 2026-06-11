@@ -158,6 +158,12 @@ pub fn load(
                 line,
                 column,
             } => {
+                // Spec 068: a route path parameter is a binder (it binds a name into the route
+                // scope), but the name lives inside the route string literal, so the lexer never
+                // emits a reserved-word token there. Reject a reserved word as a path param here,
+                // at load, with the same dedicated message the parser uses at every other binder.
+                validate_path_params(&path, line, column)?;
+
                 // Check for conflicts against already-registered routes
                 let new_pattern = path_pattern(&path);
                 for existing in &routes {
@@ -489,6 +495,25 @@ fn rescue_handler_references_auth(handler: &RescueHandler) -> bool {
     }
 }
 
+/// Spec 068: rejects a reserved word used as a route path parameter (`/x/:doc`). Each `:param`
+/// segment binds a name into the route scope, so the same reserved-word rule that governs every
+/// other binder applies - but the name is inside the string literal, so it is checked here at
+/// load rather than at parse. `keyword_lookup` matching the segment means it is a reserved word.
+fn validate_path_params(path: &str, line: usize, column: usize) -> Result<(), MarretaError> {
+    for segment in path.split('/') {
+        if let Some(param) = segment.strip_prefix(':') {
+            if crate::token::keyword_lookup(param).is_some() {
+                return Err(MarretaError::ReservedWord {
+                    word: param.to_string(),
+                    line,
+                    column,
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Normalizes a route path for conflict detection by replacing all `:param`
 /// segments with the placeholder `:*`.
 ///
@@ -695,6 +720,28 @@ mod tests {
         let registry = load(program, None).unwrap();
         assert_eq!(registry.routes[0].verb, HttpVerb::Post);
         assert_eq!(registry.routes[0].path, "/users");
+    }
+
+    #[test]
+    fn test_reserved_word_path_param_blocked_at_load() {
+        // Spec 068: `:doc`/`:feature`/`:env` (and any reserved word) as a route path parameter is
+        // rejected at load with the dedicated reserved-word error - the lexer never sees the name
+        // because it lives inside the route string literal.
+        for word in ["doc", "feature", "env", "db", "time"] {
+            let program = vec![make_route(HttpVerb::Get, &format!("/x/:{word}"))];
+            match load(program, None) {
+                Err(MarretaError::ReservedWord { word: got, .. }) => assert_eq!(got, word),
+                other => panic!("expected ReservedWord for :{word}, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_ordinary_path_param_allowed_at_load() {
+        // A non-reserved path parameter still loads cleanly.
+        let program = vec![make_route(HttpVerb::Get, "/users/:id")];
+        let registry = load(program, None).unwrap();
+        assert_eq!(registry.routes[0].path, "/users/:id");
     }
 
     #[test]

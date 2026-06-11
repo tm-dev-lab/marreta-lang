@@ -1117,6 +1117,34 @@ mod tests {
     }
 
     #[test]
+    fn every_namespace_is_reserved_at_the_lexer() {
+        // Spec 068: a documented namespace must be a reserved word, or a variable could shadow it
+        // and the provider would silently disappear from that scope (the `doc` drift this spec
+        // closed). Reserving by construction here means a future namespace cannot regress: add it
+        // to the catalog and this test fails until it also has a lexer token.
+        for entry in catalog() {
+            if matches!(entry.kind, CatalogKind::Namespace) {
+                assert!(
+                    crate::token::keyword_lookup(entry.name).is_some(),
+                    "namespace '{}' has no reserved lexer token",
+                    entry.name
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn env_accessor_is_reserved_directly() {
+        // `env` is the environment accessor, not a catalog namespace (it is not a provider), so the
+        // catalog->token invariant above does not cover it. Spec 068 reserves it too; assert that
+        // directly.
+        assert_eq!(
+            crate::token::keyword_lookup("env"),
+            Some(crate::token::TokenKind::Env)
+        );
+    }
+
+    #[test]
     fn catalog_json_is_versioned() {
         let json = catalog_json();
         assert_eq!(json["version"], 1);
