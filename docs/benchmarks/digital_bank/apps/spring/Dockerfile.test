@@ -1,0 +1,9 @@
+# Deps baked and the suite run once at build (downloads the surefire provider and warms), so the
+# timed CMD run is offline and fast. The CMD is not -q so surefire prints its "Time elapsed".
+FROM maven:3.9-eclipse-temurin-25@sha256:01ef98a139ed64622c086bac54d1e167453d0f2ff68b69d00978f26d8736215c
+WORKDIR /src
+COPY pom.xml .
+RUN mvn -q -B dependency:go-offline
+COPY src ./src
+RUN mvn -q -B test
+CMD ["mvn", "-o", "-B", "test"]

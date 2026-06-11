@@ -168,6 +168,15 @@ indexes reverted in favor of inference; reverted objects at tag `pre-067-revert`
   `pre-067-revert`); the `unique_violation` 409 mapping and the doc-driver ensure machinery were
   preserved by cherry-pick. Cross-repo follow-up: update the "Spec 067" references in
   marreta-lang-stealth (security section, backlog) from the declarative meaning to the inference one.
+- Spec 066 is delivered: the rigorous, publishable launch study in `docs/benchmarks/digital_bank`
+  validating the three about-page hypotheses (low/predictable resources, strong performance despite
+  high abstraction, developer experience). Four feature-identical contenders (Marreta, FastAPI,
+  NestJS, Spring Boot), a 120s JIT warmup + 300s steady-state window, three interleaved repetitions
+  with median + CV and a consistency gate over the full grid, fixed load levels + a 250-step
+  saturation ladder, expanded resource metrics (incl. startup at 20ms and test-suite time), and an
+  objective DX measurement (total SLOC, dependencies/footprint, capability matrix). Re-run post-067
+  on a dedicated VM; the business/wiring split was dropped and the whole `results/` tree is
+  regenerable (`RESULTS.md`/`METHODOLOGY.md`/`DX.md` are the record). No runtime change.
 - The remaining public-v1 gaps should now be tracked as new explicit specs,
   not as open follow-ups from the delivered block.
 

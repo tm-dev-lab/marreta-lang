@@ -7,7 +7,7 @@ export RUN_TS="${RUN_TS:-$(date -u +"%Y%m%dT%H%M%SZ")}"
 
 failed=0
 
-for target in marreta fastapi nest; do
+for target in marreta fastapi nest spring; do
   if "$SCRIPT_DIR/run_one.sh" "$target"; then
     :
   else

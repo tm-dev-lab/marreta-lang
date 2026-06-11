@@ -1,0 +1,6 @@
+{
+  "marreta": {"seconds": 0.021, "wall_seconds": 0.03, "note": "in-memory scenario runner; provider stubbed"},
+  "fastapi": {"seconds": 0.48, "wall_seconds": 1.93, "note": "in-process ASGI (TestClient); no network server; provider mocked"},
+  "nest": {"seconds": 3.934, "wall_seconds": 5.30, "note": "in-process app (supertest); no network server; provider mocked"},
+  "spring": {"seconds": 2.525, "wall_seconds": 6.05, "note": "MVC test slice (@WebMvcTest); no server; provider mocked"}
+}

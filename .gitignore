@@ -2,7 +2,9 @@
 .venv/
 .claude/
 
-# Raw benchmark output and build artifacts are never committed (docs/ layout, spec 055).
+# Benchmark run outputs (raw and aggregate alike) are regenerable and live only alongside a run.
+# The study's data of record is the committed RESULTS.md / DX.md, not a tree of per-run files, so
+# the whole results/ directory stays out of the repo (main carries the lean study, not the pile).
 docs/benchmarks/**/results/
 docs/benchmarks/**/.build/
 # Node tooling (VS Code extension) and build artifacts.
