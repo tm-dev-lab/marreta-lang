@@ -118,6 +118,9 @@ expect_body GET "/tasks/namespaced/hello" '{"shout":"HELLO!","wrapped":"<hello>"
 expect_match GET "/ns/uuid" '"v4":"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"'
 expect_match GET "/ns/time" '"formatted":"27/04/2026"'
 
+# Spec 068: reserved words normalize back as names (map keys + member access) over the live path
+expect_body GET "/ns/reserved-as-names" '{"doc":"d","feature":"f","env":"e","date":"dt","db":"b","time":"t"}'
+
 # generated docs (public contract)
 expect_status GET "/openapi.json" 200
 expect_match  GET "/openapi.json" '/control/match'

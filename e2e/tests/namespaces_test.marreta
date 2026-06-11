@@ -36,3 +36,8 @@ scenario "log namespace passes through"
     when GET "/ns/log"
     then status 200
     then response is { body: { logged: true } }
+
+scenario "reserved words are free as map keys and member names"
+    when GET "/ns/reserved-as-names"
+    then status 200
+    then response is { body: { doc: "d", feature: "f", env: "e", date: "dt", db: "b", time: "t" } }

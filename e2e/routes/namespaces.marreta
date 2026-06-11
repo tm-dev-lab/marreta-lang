@@ -65,3 +65,17 @@ route GET "/ns/log"
     log.warn("e2e warn")
     log.error("e2e error")
     reply 200, { logged: true }
+
+# Spec 068: reserved words are free in a name position (a map key, a member name), where they
+# normalize back to identifiers. A map literal spelled with reserved-word keys, read back via
+# member access, must round-trip through the runtime unchanged - the binder rule never reaches here.
+route GET "/ns/reserved-as-names"
+    config = { doc: "d", feature: "f", env: "e", date: "dt", db: "b", time: "t" }
+    reply 200, {
+        doc: config.doc,
+        feature: config.feature,
+        env: config.env,
+        date: config.date,
+        db: config.db,
+        time: config.time
+    }
