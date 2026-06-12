@@ -13,7 +13,7 @@ export schema Address
 export schema RichOrder
     customer: string
     amount: decimal
-    status: enum ["pending", "paid"]
+    status: enum["pending", "paid"]
     tags: list of string
     created_at: instant
     address: Address

@@ -774,7 +774,10 @@ fn validate_namespace_stem(stem: &str, module_id: &str) -> Result<(), MarretaErr
 }
 
 /// Recursively collects all `.marreta` files under `root_dir`, excluding `entrypoint`.
-fn collect_marreta_files(root_dir: &Path, entrypoint: &Path) -> Vec<PathBuf> {
+/// Every `.marreta` file under `root_dir`, recursively, except the `entrypoint` (parsed
+/// separately). Spec 072: the single source of project file discovery, shared with the formatter
+/// so `marreta fmt` covers exactly what the runtime loads (no drift, pinned by an invariant test).
+pub(crate) fn collect_marreta_files(root_dir: &Path, entrypoint: &Path) -> Vec<PathBuf> {
     let mut result = Vec::new();
     collect_recursive(root_dir, entrypoint, &mut result);
     result.sort();

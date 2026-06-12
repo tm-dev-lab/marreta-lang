@@ -485,6 +485,100 @@ fn test_fmt_check_passes_on_formatted_project() {
     assert!(stdout.contains("All files formatted."));
 }
 
+// Spec 072 (2.1): the project-mode `fmt` must reach files in non-canonical directories
+// (an `auth/` folder, a fully custom `lib/`), exactly the files the runtime loads. This is
+// the bug case made green, asserted end-to-end through the real binary.
+#[test]
+fn test_fmt_formats_files_in_noncanonical_dirs() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::write(
+        root.join("app.marreta"),
+        "project_name = \"fmt-test\"\nproject_version = \"0.1.0\"\n",
+    )
+    .unwrap();
+    // Unformatted files in two non-canonical directories.
+    std::fs::create_dir(root.join("auth")).unwrap();
+    std::fs::write(
+        root.join("auth/customer_auth.marreta"),
+        "task helper()\n  reply 200, { ok: true }\n",
+    )
+    .unwrap();
+    std::fs::create_dir(root.join("lib")).unwrap();
+    std::fs::write(
+        root.join("lib/util.marreta"),
+        "task other()\n  reply 200, { ok: true }\n",
+    )
+    .unwrap();
+
+    // --check flags both before formatting (exit 1).
+    let check_before = Command::new(env!("CARGO_BIN_EXE_marreta"))
+        .args(["fmt", "--check"])
+        .current_dir(root)
+        .output()
+        .unwrap();
+    let before_stdout = String::from_utf8_lossy(&check_before.stdout);
+    assert_eq!(check_before.status.code(), Some(1));
+    assert!(before_stdout.contains("auth/customer_auth.marreta"));
+    assert!(before_stdout.contains("lib/util.marreta"));
+
+    // Format rewrites both.
+    let fmt = Command::new(env!("CARGO_BIN_EXE_marreta"))
+        .arg("fmt")
+        .current_dir(root)
+        .output()
+        .unwrap();
+    assert_eq!(fmt.status.code(), Some(0));
+    assert_eq!(
+        std::fs::read_to_string(root.join("auth/customer_auth.marreta")).unwrap(),
+        "task helper()\n    reply 200, { ok: true }\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(root.join("lib/util.marreta")).unwrap(),
+        "task other()\n    reply 200, { ok: true }\n"
+    );
+
+    // --check now passes (exit 0): the flip across a format.
+    let check_after = Command::new(env!("CARGO_BIN_EXE_marreta"))
+        .args(["fmt", "--check"])
+        .current_dir(root)
+        .output()
+        .unwrap();
+    assert_eq!(check_after.status.code(), Some(0));
+    assert!(String::from_utf8_lossy(&check_after.stdout).contains("All files formatted."));
+}
+
+// Spec 072 (2.2/2.3/2.5): the stdin path applies the new normalizations, the probes from the
+// spec asserted through the real binary (this is the path the editor format-on-save uses).
+#[test]
+fn test_fmt_stdin_applies_new_normalizations() {
+    use std::io::Write;
+    use std::process::Stdio;
+
+    // Blank-line run (2.2), no final newline (2.3), and a `#comment` (2.5) all in one input.
+    let input = "#comment\na = 1\n\n\n\n\nb = 2";
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_marreta"))
+        .args(["fmt", "--stdin", "--file", "t.marreta"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(input.as_bytes())
+        .unwrap();
+    let output = child.wait_with_output().unwrap();
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(output.status.code(), Some(0));
+    // `#comment` -> `# comment`, the 4-blank run collapses to one, and exactly one final newline.
+    assert_eq!(stdout, "# comment\na = 1\n\nb = 2\n");
+}
+
 #[test]
 fn test_fmt_invalid_file_is_not_overwritten() {
     let dir = tempfile::tempdir().unwrap();

@@ -222,6 +222,16 @@ indexes reverted in favor of inference; reverted objects at tag `pre-067-revert`
   suppression (`# marreta: allow <code>`), a single rule catalog (the drift-proof source for docs +
   editor links + an invariant test), the `reference/lint` docs page, editor `codeDescription` links,
   and a suppress quick-fix (ordered after any real fix).
+- Spec 072 is delivered: a fmt consistency pass. One correctness fix (the formatter walked only
+  `routes`/`schemas`/`tasks`/`tests`, silently skipping files in custom dirs like `auth/` that the
+  loader loads; now shares the loader's recursive discovery, pinned by an invariant test) plus four
+  invariant-safe normalizations (collapse blank-line runs to one, exactly one final newline, strip
+  file-edge blanks, `#comment` to `# comment`), and a documented stance for the non-goals (no
+  wrapping, alignment, sorting, reflow). The final-newline rule required refining the token-stream
+  snapshot (`significant_tokens`) to drop the file-terminal `Newline` even when it sits behind
+  synthesized `Dedent`s, a foundation touch surfaced in review and guarded by unit tests; the parked
+  spec's "safe by construction" claim was corrected to the verified fact. Lint discovery was already
+  recursive, no fix there.
 - Follow-up (security): `db identifier hardening` - the `non-literal-sql-identifier` lint (Spec 071)
   warns at dev-time when a `db` identifier (`order_by` / `select` alias / `like`/`in` field) is built
   from a runtime value, the `order_by` injection vector; the runtime guard (quote, validate against

@@ -147,8 +147,35 @@ route GET "/users"
     reply 200, users
 ```
 
-- Use `#` for all comments.
+- Use `#` for all comments, with one space after the `#` (`marreta fmt` adds it, turning
+  `#note` into `# note`). Divider styles like `## section` and a bare `#` are left as they are.
 - Prefer comments that explain why, not what.
+
+## Formatting
+
+`marreta fmt` rewrites a project to this house style so the layout is never a review topic.
+It formats every `.marreta` file the project loads (the same files `marreta serve` and
+`marreta test` read, including any in non-standard folders like `auth/`), and it enforces:
+
+- four-space indentation (see Indentation above),
+- one space around operators and after commas and colons (intra-line spacing),
+- runs of blank lines collapsed to at most one,
+- exactly one newline at the end of the file, and no blank lines at the file's start or end,
+- one space after the leading `#` of a comment (see Comments above).
+
+These are decisions, not omissions, and the formatter deliberately stops there:
+
+- **No line wrapping and no maximum line width.** In Marreta a newline and an indent are
+  meaning-bearing (they separate statements and open blocks), so wrapping a line would change
+  the program's structure, which is exactly what the formatter is built never to do. Line
+  length is the author's call.
+- **No alignment.** Fields and assignments are not padded into columns, because editing one
+  line would then reflow its neighbors and add noise to every diff.
+- **No sorting.** The order of fields, routes, and declarations is meaningful (it is the
+  document order of the generated OpenAPI and the author's reading order), so the formatter
+  keeps it.
+- **No comment reflow.** The text of a comment belongs to the author. The formatter only
+  fixes the single space after the leading `#`, never the words.
 
 ## File structure
 

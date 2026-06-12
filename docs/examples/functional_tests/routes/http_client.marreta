@@ -56,9 +56,9 @@ route POST "/stub/webhook" take payload
 
 route GET "/stub/products"
     reply 200, [
-        { id: 1, name: "Anvil",   price: 100 },
-        { id: 2, name: "Hammer",  price: 40  },
-        { id: 3, name: "Wrench",  price: 25  }
+        { id: 1, name: "Anvil", price: 100 },
+        { id: 2, name: "Hammer", price: 40 },
+        { id: 3, name: "Wrench", price: 25 }
     ]
 
 route GET "/stub/status/200"

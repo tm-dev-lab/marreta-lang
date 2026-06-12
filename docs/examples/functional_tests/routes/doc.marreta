@@ -102,11 +102,11 @@ route POST "/docs/contract-types" take payload as ContractTypesPayload
 # Inserts a fixed dataset into the `persons` collection for query demos.
 # Safe to call multiple times (idempotent via upsert on name field).
 route POST "/docs/persons/seed"
-    doc.persons >> where("name" == "Alice") >> upsert({ name: "Alice", age: 30, active: true,  score: 88, city: "SP", tags: ["admin", "user"] })
-    doc.persons >> where("name" == "Bob")   >> upsert({ name: "Bob",   age: 17, active: true,  score: 72, city: "RJ", tags: ["user"] })
+    doc.persons >> where("name" == "Alice") >> upsert({ name: "Alice", age: 30, active: true, score: 88, city: "SP", tags: ["admin", "user"] })
+    doc.persons >> where("name" == "Bob") >> upsert({ name: "Bob", age: 17, active: true, score: 72, city: "RJ", tags: ["user"] })
     doc.persons >> where("name" == "Carol") >> upsert({ name: "Carol", age: 25, active: false, score: 95, city: "SP", tags: ["user", "moderator"] })
-    doc.persons >> where("name" == "Dave")  >> upsert({ name: "Dave",  age: 40, active: true,  score: 60, city: "BH", tags: ["user"] })
-    doc.persons >> where("name" == "Eve")   >> upsert({ name: "Eve",   age: 22, active: true,  score: 81, city: "SP", tags: ["user"] })
+    doc.persons >> where("name" == "Dave") >> upsert({ name: "Dave", age: 40, active: true, score: 60, city: "BH", tags: ["user"] })
+    doc.persons >> where("name" == "Eve") >> upsert({ name: "Eve", age: 22, active: true, score: 81, city: "SP", tags: ["user"] })
     reply 201, { seeded: true }
 
 # ── Basic fetch ────────────────────────────────────────────────────────────────
@@ -159,7 +159,7 @@ route GET "/docs/pipeline/complex"
 
 route GET "/docs/pipeline/in"
     # $in filter — items with status A or B
-    rows = doc.items >> in("status", ["A", "B"]) >> fetch_all
+    rows = doc.items >> in ("status", ["A", "B"]) >> fetch_all
     reply 200, { items: rows }
 
 route GET "/docs/q/like/:pattern"
@@ -184,7 +184,7 @@ route GET "/docs/q/page"
     # Cursor-style pagination: returns items + total count in one response
     # Query params: page (default 1), size (default 3)
     total = doc.persons >> count
-    rows  = doc.persons >> order("name", "asc") >> limit(3) >> offset(0) >> fetch_all
+    rows = doc.persons >> order("name", "asc") >> limit(3) >> offset(0) >> fetch_all
     reply 200, { items: rows, total: total, page: 1, size: 3 }
 
 # ── fetch_one ──────────────────────────────────────────────────────────────────
@@ -249,8 +249,8 @@ route POST "/agg/seed"
     # Idempotent seed: insert 4 sales documents per call
     doc.sales.save({ product: "A", category: "electronics", amount: 100, in_stock: true })
     doc.sales.save({ product: "B", category: "electronics", amount: 200, in_stock: false })
-    doc.sales.save({ product: "C", category: "clothing",    amount:  50, in_stock: true })
-    doc.sales.save({ product: "D", category: "clothing",    amount:  75, in_stock: true })
+    doc.sales.save({ product: "C", category: "clothing", amount: 50, in_stock: true })
+    doc.sales.save({ product: "D", category: "clothing", amount: 75, in_stock: true })
     reply 201, { seeded: true }
 
 route GET "/agg/by-category"
@@ -322,11 +322,11 @@ route GET "/agg/in-stock"
 
 route POST "/pipeline/seed"
     # Seed orders_p collection for Layer 4 demos
-    doc.orders_p.save({ user_id: "u1", status: "paid",    amount: 100, region: "BR" })
-    doc.orders_p.save({ user_id: "u1", status: "paid",    amount: 200, region: "BR" })
-    doc.orders_p.save({ user_id: "u2", status: "pending", amount:  50, region: "US" })
-    doc.orders_p.save({ user_id: "u3", status: "paid",    amount: 150, region: "US" })
-    doc.orders_p.save({ user_id: "u3", status: "pending", amount:  80, region: "BR" })
+    doc.orders_p.save({ user_id: "u1", status: "paid", amount: 100, region: "BR" })
+    doc.orders_p.save({ user_id: "u1", status: "paid", amount: 200, region: "BR" })
+    doc.orders_p.save({ user_id: "u2", status: "pending", amount: 50, region: "US" })
+    doc.orders_p.save({ user_id: "u3", status: "paid", amount: 150, region: "US" })
+    doc.orders_p.save({ user_id: "u3", status: "pending", amount: 80, region: "BR" })
     reply 201, { seeded: true }
 
 route GET "/pipeline/match"
@@ -339,7 +339,7 @@ route GET "/pipeline/match"
 route GET "/pipeline/sort-limit"
     # $sort + $limit — top 2 orders by amount descending
     result = doc.pipeline("orders_p", [
-        { sort:  { amount: -1 } },
+        { sort: { amount: -1 } },
         { limit: 2 }
     ])
     reply 200, result
@@ -347,8 +347,8 @@ route GET "/pipeline/sort-limit"
 route GET "/pipeline/skip"
     # $sort + $skip + $limit — second page (offset by 2)
     result = doc.pipeline("orders_p", [
-        { sort:  { amount: -1 } },
-        { skip:  2 },
+        { sort: { amount: -1 } },
+        { skip: 2 },
         { limit: 2 }
     ])
     reply 200, result
@@ -380,7 +380,7 @@ route GET "/pipeline/multi"
     result = doc.pipeline("orders_p", [
         { match: { status: "paid" } },
         { group: { by: "user_id", total: { sum: "$amount" }, orders: { count: 1 } } },
-        { sort:  { total: -1 } }
+        { sort: { total: -1 } }
     ])
     reply 200, result
 
@@ -388,7 +388,7 @@ route GET "/pipeline/region-totals"
     # Group by region, sum and count — then sort
     result = doc.pipeline("orders_p", [
         { group: { by: "region", revenue: { sum: "$amount" }, n: { count: 1 } } },
-        { sort:  { revenue: -1 } }
+        { sort: { revenue: -1 } }
     ])
     reply 200, result
 
@@ -396,7 +396,7 @@ route GET "/pipeline/match-project"
     # Combine match + project — paid orders keeping status and amount fields
     # Note: MongoDB always includes _id in inclusion projections
     result = doc.pipeline("orders_p", [
-        { match:   { status: "paid" } },
+        { match: { status: "paid" } },
         { project: { status: 1, amount: 1 } }
     ])
     reply 200, result

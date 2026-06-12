@@ -44,7 +44,6 @@ route DELETE "/db/items/:id"
     require deleted else fail 404, "not found"
     reply 200, { deleted: true }
 
-
 # ═════════════════════════════════════════════════════════════════════════════
 # SECTION 18 — Pipeline queries  (requires DB)
 #
@@ -125,9 +124,8 @@ route GET "/db/pipeline/like"
 
 route GET "/db/pipeline/in"
     # in("col", list) — IN filter, matches any value in the list.
-    rows = db.items >> in("name", ["alpha", "beta"]) >> fetch
+    rows = db.items >> in ("name", ["alpha", "beta"]) >> fetch
     reply 200, { items: rows }
-
 
 # ═════════════════════════════════════════════════════════════════════════════
 # SECTION 18B — Relation navigation by convention  (requires DB)
@@ -223,7 +221,6 @@ route POST "/db/relations/users/reject-id"
     user = db.users.save({ id: 99, name: "Injected" })
     reply 200, user
 
-
 # ═════════════════════════════════════════════════════════════════════════════
 # SECTION 18C — Temporal persistence  (requires DB)
 #
@@ -261,7 +258,6 @@ route POST "/db/contract-types" take payload as ContractTypesPayload
         ignored: "stripped"
     }
 
-
 # ═════════════════════════════════════════════════════════════════════════════
 # SECTION 19 — Parallel DB queries  (requires DB)
 #
@@ -290,7 +286,6 @@ route GET "/db/parallel/mixed"
         -> get_meta
     reply 200, { items: results.first(), meta: results.last() }
 
-
 # ═════════════════════════════════════════════════════════════════════════════
 # SECTION 20 — Native query  (requires DB)
 #
@@ -317,7 +312,6 @@ route GET "/db/native/search"
         "SELECT * FROM items WHERE active = #{true} AND id > #{min_id} ORDER BY name ASC"
     )
     reply 200, { items: rows }
-
 
 # ═════════════════════════════════════════════════════════════════════════════
 # SECTION 21 — Transactions  (requires DB)

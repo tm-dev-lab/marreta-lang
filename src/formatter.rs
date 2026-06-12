@@ -74,16 +74,33 @@ pub fn format_source(source: &str) -> Result<FormatResult, FormatError> {
 }
 
 /// The meaning-bearing token stream: the full token sequence including the semantic layout
-/// tokens (Indent, Dedent, Newline — block structure and statement separation), with only the
-/// Eof sentinel dropped. The lexer already collapses consecutive newlines, so blank-line
-/// normalization does not change it.
+/// tokens (Indent, Dedent, Newline — block structure and statement separation), with the Eof
+/// sentinel and the file-terminal Newline dropped.
+///
+/// Spec 072 (2.3): the lexer collapses interior consecutive newlines, but the file-terminal
+/// newline still differs between an input with a final `\n` and one without, and at the end of an
+/// indented file it sits *behind* the synthesized block-closing Dedents: `... Newline Dedent* Eof`
+/// (with `\n`) versus `... Dedent* Eof` (without). That terminal Newline separates nothing (no
+/// statement follows it, and a Dedent is a synthesized block close, not a statement), so it is not
+/// meaning-bearing. We walk back over the terminal Dedent run and drop the single Newline behind
+/// it. This lets the formatter normalize the final newline (add one when missing, keep exactly
+/// one) without tripping the divergence guard, while every interior Newline and every Dedent stays
+/// snapshotted and protected.
 fn significant_tokens(source: &str) -> Result<Vec<TokenKind>, FormatError> {
     let tokens = Lexer::new(source).tokenize().map_err(FormatError::Parse)?;
-    Ok(tokens
+    let mut kinds: Vec<TokenKind> = tokens
         .into_iter()
         .map(|token| token.kind)
         .filter(|kind| !matches!(kind, TokenKind::Eof))
-        .collect())
+        .collect();
+    let mut end = kinds.len();
+    while end > 0 && matches!(kinds[end - 1], TokenKind::Dedent) {
+        end -= 1;
+    }
+    if end > 0 && matches!(kinds[end - 1], TokenKind::Newline) {
+        kinds.remove(end - 1);
+    }
+    Ok(kinds)
 }
 
 pub fn discover_project_files(root: &Path) -> Result<Vec<PathBuf>, FormatError> {
@@ -92,13 +109,12 @@ pub fn discover_project_files(root: &Path) -> Result<Vec<PathBuf>, FormatError> 
         return Err(FormatError::MissingProjectRoot(root.to_path_buf()));
     }
 
-    let mut files = vec![app];
-    for dir in ["routes", "schemas", "tasks", "tests"] {
-        let path = root.join(dir);
-        if path.exists() {
-            collect_marreta_files(&path, &mut files)?;
-        }
-    }
+    // Spec 072: share the loader's recursive discovery so `marreta fmt` formats exactly what the
+    // runtime loads. The loader walks the whole root and excludes the entrypoint (it parses
+    // `app.marreta` separately); fmt formats it too, so we append it. The old four-directory list
+    // (routes/schemas/tasks/tests) silently skipped files in custom folders like `auth/`.
+    let mut files = crate::file_loader::collect_marreta_files(root, &app);
+    files.push(app);
     files.sort();
     Ok(files)
 }
@@ -143,7 +159,6 @@ fn parse_source(source: &str) -> Result<(), FormatError> {
 }
 
 fn normalize_source(source: &str) -> String {
-    let had_final_newline = source.ends_with('\n');
     let mut stack = vec![0usize];
     let mut lines = Vec::new();
 
@@ -166,11 +181,39 @@ fn normalize_source(source: &str) -> String {
         lines.push(FormattedLine::new(depth, stripped));
     }
 
+    // Spec 072 (2.2-2.4): collapse runs of 2+ blank lines to one and strip blanks at
+    // both file edges. Blank lines carry no significant tokens (the lexer collapses
+    // consecutive newlines), so this never changes meaning; the `format_source` guard
+    // proves it on every run anyway.
+    let lines = normalize_blank_lines(lines);
+
     let mut output = apply_top_level_spacing(&lines).join("\n");
-    if had_final_newline {
-        output.push('\n');
-    }
+    // Spec 072 (2.3): always end with exactly one final newline, regardless of input.
+    output.push('\n');
     output
+}
+
+/// Collapse consecutive blank lines to at most one and remove blank lines at the
+/// start and end of the file. Non-blank lines pass through untouched and in order.
+fn normalize_blank_lines(lines: Vec<FormattedLine>) -> Vec<FormattedLine> {
+    let mut result = Vec::with_capacity(lines.len());
+    for line in lines {
+        if line.is_blank {
+            // Drop leading blanks (nothing emitted yet) and collapse runs.
+            if result
+                .last()
+                .is_none_or(|last: &FormattedLine| last.is_blank)
+            {
+                continue;
+            }
+        }
+        result.push(line);
+    }
+    // Drop the single trailing blank a collapsed run may have left.
+    while result.last().is_some_and(|last| last.is_blank) {
+        result.pop();
+    }
+    result
 }
 
 #[derive(Debug, Clone)]
@@ -195,9 +238,10 @@ impl FormattedLine {
 
     fn new(depth: usize, stripped: &str) -> Self {
         let is_comment = stripped.starts_with('#');
-        // Comment-only lines are kept verbatim; code lines get canonical intra-line spacing.
+        // Comment-only lines keep their content (no reflow); code lines get canonical
+        // intra-line spacing. Comments get only the leading `#`-spacing normalization.
         let content = if is_comment {
-            stripped.to_string()
+            normalize_comment_spacing(stripped)
         } else {
             respace_line(stripped)
         };
@@ -209,6 +253,18 @@ impl FormattedLine {
             is_comment,
             is_top_level_declaration: depth == 0 && is_top_level_declaration(stripped),
         }
+    }
+}
+
+/// Spec 072 (2.5): a leading `#` directly followed by a non-space, non-`#` character
+/// gains exactly one space (`#comment` -> `# comment`). A bare `#` and `##`-style
+/// comments (dividers, doc-headings) are left untouched, and the comment content beyond
+/// the first character is never modified (no reflow). The caller guarantees the line
+/// starts with `#`, which is one byte, so slicing at 1 is on a char boundary.
+fn normalize_comment_spacing(comment: &str) -> String {
+    match comment[1..].chars().next() {
+        Some(next) if next != ' ' && next != '#' => format!("# {}", &comment[1..]),
+        _ => comment.to_string(),
     }
 }
 
@@ -530,6 +586,83 @@ mod tests {
         std::fs::write(path, content).unwrap();
     }
 
+    // --- Spec 072: blank-line pass (2.2-2.4) ---
+
+    #[test]
+    fn collapses_runs_of_blank_lines_to_one() {
+        assert_eq!(fmt("a = 1\n\n\n\n\nb = 2\n"), "a = 1\n\nb = 2\n");
+    }
+
+    #[test]
+    fn preserves_a_single_blank_line() {
+        assert_eq!(fmt("a = 1\n\nb = 2\n"), "a = 1\n\nb = 2\n");
+    }
+
+    #[test]
+    fn adds_missing_final_newline() {
+        assert_eq!(fmt("a = 1"), "a = 1\n");
+    }
+
+    #[test]
+    fn keeps_a_single_final_newline() {
+        assert_eq!(fmt("a = 1\n"), "a = 1\n");
+        assert_eq!(fmt("a = 1\n\n\n"), "a = 1\n");
+    }
+
+    // Spec 072 (2.3): an indented file with no final newline ends in `... Newline Dedent* Eof`
+    // vs `... Dedent* Eof`, so the terminal Newline sits behind the synthesized Dedents. The
+    // significant_tokens snapshot must skip those Dedents to find and drop it, or adding the
+    // final newline trips the divergence guard. The corpus cannot guard this (every corpus file
+    // already ends in a newline), so these two unit tests are the guardian.
+    #[test]
+    fn adds_final_newline_to_indented_body_without_one() {
+        assert_eq!(
+            fmt("route GET \"/x\"\n    reply 200, 1"),
+            "route GET \"/x\"\n    reply 200, 1\n"
+        );
+    }
+
+    #[test]
+    fn indented_body_with_final_newline_is_idempotent() {
+        let formatted = "route GET \"/x\"\n    reply 200, 1\n";
+        assert_eq!(fmt(formatted), formatted);
+    }
+
+    #[test]
+    fn strips_blank_lines_at_file_edges() {
+        assert_eq!(fmt("\n\na = 1\nb = 2\n\n\n"), "a = 1\nb = 2\n");
+    }
+
+    // --- Spec 072: comment spacing (2.5) ---
+
+    #[test]
+    fn adds_space_after_hash_in_comment() {
+        assert_eq!(fmt("#comment\nx = 1\n"), "# comment\nx = 1\n");
+    }
+
+    #[test]
+    fn leaves_already_spaced_and_special_comments_untouched() {
+        // already spaced, `##` heading-style, and a bare `#` all pass through.
+        assert_eq!(fmt("# spaced\nx = 1\n"), "# spaced\nx = 1\n");
+        assert_eq!(fmt("## heading\nx = 1\n"), "## heading\nx = 1\n");
+        assert_eq!(fmt("#\nx = 1\n"), "#\nx = 1\n");
+    }
+
+    #[test]
+    fn normalize_comment_spacing_edge_rule() {
+        assert_eq!(normalize_comment_spacing("#x"), "# x");
+        assert_eq!(normalize_comment_spacing("#==="), "# ===");
+        assert_eq!(normalize_comment_spacing("# x"), "# x");
+        assert_eq!(normalize_comment_spacing("## x"), "## x");
+        assert_eq!(normalize_comment_spacing("#"), "#");
+    }
+
+    #[test]
+    fn normalizes_only_the_leading_hash_not_comment_content() {
+        // The `#` inside the comment body is content, never touched.
+        assert_eq!(fmt("#note #2\nx = 1\n"), "# note #2\nx = 1\n");
+    }
+
     #[test]
     fn normalizes_indentation_to_four_spaces() {
         let source = "route GET \"/x\"\n  value = 1\n  reply 200, value\n";
@@ -689,8 +822,23 @@ mod tests {
         assert!(matches!(err, FormatError::MissingProjectRoot(_)));
     }
 
+    fn relative_to(root: &Path, files: &[PathBuf]) -> Vec<String> {
+        files
+            .iter()
+            .map(|path| {
+                path.strip_prefix(root)
+                    .unwrap()
+                    .to_string_lossy()
+                    .to_string()
+            })
+            .collect()
+    }
+
+    // Spec 072 (2.1): fmt discovery recurses every directory the loader would load,
+    // not just the four canonical ones. A project with an `auth/` directory (the
+    // organization spec 024 suggests) or any custom folder must be reachable by fmt.
     #[test]
-    fn project_discovery_uses_only_canonical_project_dirs() {
+    fn project_discovery_recurses_every_directory_like_the_loader() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         touch(&root.join("app.marreta"), "project_name = \"fmt\"\n");
@@ -714,26 +862,21 @@ mod tests {
             &root.join("tests/api_test.marreta"),
             "scenario \"ok\"\n    assert true\n",
         );
+        // The bug cases: a non-canonical `auth/` dir and a fully custom `lib/` dir.
         touch(
-            &root.join("docs/example.marreta"),
-            "this should be ignored\n",
+            &root.join("auth/customer_auth.marreta"),
+            "auth_provider Customer\n    header \"X-Token\"\n",
         );
+        touch(&root.join("lib/y.marreta"), "task helper() => 1\n");
 
         let files = discover_project_files(root).unwrap();
-        let relative: Vec<_> = files
-            .iter()
-            .map(|path| {
-                path.strip_prefix(root)
-                    .unwrap()
-                    .to_string_lossy()
-                    .to_string()
-            })
-            .collect();
 
         assert_eq!(
-            relative,
+            relative_to(root, &files),
             vec![
                 "app.marreta",
+                "auth/customer_auth.marreta",
+                "lib/y.marreta",
                 "routes/admin/ping.marreta",
                 "routes/api.marreta",
                 "schemas/models.marreta",
@@ -741,6 +884,33 @@ mod tests {
                 "tests/api_test.marreta",
             ]
         );
+    }
+
+    // Spec 072 (2.1): pin fmt discovery to the loader's discovery so the two lists
+    // cannot drift again (the 068 catalog-to-token pattern, applied to file discovery).
+    #[test]
+    fn fmt_discovery_equals_loader_discovery_plus_entrypoint() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let app = root.join("app.marreta");
+        touch(&app, "project_name = \"fmt\"\n");
+        touch(
+            &root.join("routes/api.marreta"),
+            "route GET \"/x\"\n    reply 200, null\n",
+        );
+        touch(
+            &root.join("auth/customer_auth.marreta"),
+            "auth_provider Customer\n    header \"X-Token\"\n",
+        );
+        touch(&root.join("lib/y.marreta"), "task helper() => 1\n");
+
+        let fmt_files = discover_project_files(root).unwrap();
+
+        let mut loader_files = crate::file_loader::collect_marreta_files(root, &app);
+        loader_files.push(app);
+        loader_files.sort();
+
+        assert_eq!(fmt_files, loader_files);
     }
 
     #[test]

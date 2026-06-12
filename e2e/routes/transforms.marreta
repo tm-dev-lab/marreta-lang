@@ -5,9 +5,9 @@ task triple(n) => n * 3
 # pipeline + map + keep/skip in a single pass
 route POST "/transforms/labels" take payload
     labeled = payload.scores >> map s
-        keep "high"   if s > 100
+        keep "high" if s > 100
         keep "medium" if s > 50
-        keep "low"    if s > 0
+        keep "low" if s > 0
 
     reply 200, { labeled: labeled }
 

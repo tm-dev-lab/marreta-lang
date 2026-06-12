@@ -33,8 +33,8 @@ route POST "/contracts/request-only" take payload as ItemPayload
 
 route POST "/contracts/response-only" take payload
     reply 200 as ItemResponse, {
-        id:     1,
-        name:   payload.name,
+        id: 1,
+        name: payload.name,
         active: true,
         secret: "stripped — not in item_response schema"
     }
@@ -50,8 +50,8 @@ route POST "/contracts/response-only" take payload
 
 route POST "/contracts/full" take payload as ItemPayload
     reply 200 as ItemResponse, {
-        id:     1,
-        name:   payload.name,
+        id: 1,
+        name: payload.name,
         active: payload.active,
         secret: "stripped"
     }
@@ -70,11 +70,11 @@ route POST "/contracts/full" take payload as ItemPayload
 
 route POST "/contracts/composed" take payload as ContactPayload
     reply 201 as ContactResponse, {
-        id:      1,
-        name:    payload.name,
-        email:   payload.email,
+        id: 1,
+        name: payload.name,
+        email: payload.email,
         address: payload.address,
-        secret:  "stripped"
+        secret: "stripped"
     }
 
 # ─── Route 5: optional fields ─────────────────────────────────────────────────
@@ -90,11 +90,11 @@ route POST "/contracts/composed" take payload as ContactPayload
 
 route POST "/contracts/optional" take payload as ContactPayload
     age_info = match payload.age
-        null     -> 0
+        null -> 0
         fallback -> payload.age
     reply 200 as ContactSummary, {
-        id:    age_info,
-        name:  payload.name,
+        id: age_info,
+        name: payload.name,
         email: payload.email
     }
 

@@ -45,7 +45,7 @@ See [Evolve your database with migrations](../how-to/migrations.md).
 
 | Command | Purpose |
 |---|---|
-| `marreta fmt [--check]` | Formats `.marreta` sources. `--check` verifies formatting without writing. |
+| `marreta fmt [--check]` | Formats every `.marreta` file the project loads (the same files `serve` and `test` read, in any folder). `--check` verifies formatting without writing. |
 | `marreta lint [--strict]` | Lints the project for problems, with `--strict` to fail on warnings. |
 
 ## Editor tooling

@@ -5,41 +5,41 @@
 # (reply CODE as schema — strips extra fields, enforces types).
 
 export schema ItemPayload
-    name:   string
+    name: string
     active: boolean
 
 export schema ItemResponse
-    id:     integer
-    name:   string
+    id: integer
+    name: string
     active: boolean
 
 # ── Schemas used by SECTION 27 (contracts showcase) ──────────────────────────
 
 export schema Address
-    street:  string
-    city:    string
+    street: string
+    city: string
     zipcode: string
 
 export schema ContactPayload
-    name:    string
-    email:   string
-    age?:    integer
+    name: string
+    email: string
+    age?: integer
     address: Address
 
 export schema ContactResponse
-    id:      integer
-    name:    string
-    email:   string
+    id: integer
+    name: string
+    email: string
     address: Address
 
 export schema ContactSummary
-    id:    integer
-    name:  string
+    id: integer
+    name: string
 
 export schema QueueOrder
     order_id: integer
     customer: string
-    total:    float
+    total: float
 
 export schema MathPayload
     value: float
@@ -51,14 +51,14 @@ export schema MathResponse
     bounded: float
 
 export schema ContractTypesPayload
-    status: enum ["pending", "paid", "cancelled"]
+    status: enum["pending", "paid", "cancelled"]
     amount: decimal
 
 export schema ContractTypesRecord
     db: contract_type_records
 
     id: integer
-    status: enum ["pending", "paid", "cancelled"]
+    status: enum["pending", "paid", "cancelled"]
     amount: decimal
 
 export schema ConstructorMessage

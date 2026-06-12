@@ -6,4 +6,4 @@ export task get_coupon_rate(order as OrderPayload)
     match coupon
         "SAVE10" -> 0.10
         "SAVE20" -> 0.20
-        fallback  -> 0.0
+        fallback -> 0.0
