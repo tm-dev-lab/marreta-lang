@@ -35,6 +35,7 @@
 - [Configuration](reference/configuration.md)
 - [CLI](reference/cli.md)
 - [Error codes](reference/errors.md)
+- [Lint codes](reference/lint.md)
 - [Namespaces](reference/namespaces.md)
   - [base64](reference/namespaces/base64.md)
   - [cache](reference/namespaces/cache.md)

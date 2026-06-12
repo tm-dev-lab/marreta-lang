@@ -60,13 +60,3 @@ export schema BillingCommand
     status: string
     created_at: instant
     completed_at: instant
-
-export schema AuditSnapshot
-    order_id: integer
-    customer_id: integer
-    customer_name: string
-    description: string
-    total_amount: float
-    status: string
-    created_at: instant
-    completed_at: instant

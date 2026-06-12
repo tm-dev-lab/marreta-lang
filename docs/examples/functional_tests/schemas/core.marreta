@@ -13,10 +13,6 @@ export schema ItemResponse
     name:   string
     active: boolean
 
-export schema SearchPayload
-    term:  string
-    limit: integer
-
 # ── Schemas used by SECTION 27 (contracts showcase) ──────────────────────────
 
 export schema Address

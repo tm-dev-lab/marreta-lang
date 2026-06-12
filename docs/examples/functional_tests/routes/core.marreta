@@ -802,6 +802,9 @@ route GET "/errors/rescue_null"
     reply 200, { val: val }
 
 # rescue block — multi-line recovery
+# The happy path returns no response on purpose (the fixture exercises the rescue recovery), so the
+# silent 204 is intended here.
+# marreta: allow route_without_response
 route GET "/errors/rescue_block"
     task blow_up(x)
         raise "boom"

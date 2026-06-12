@@ -87,7 +87,14 @@ function toDiagnostic(item) {
     item.help ? `${item.message}\n${item.help}` : item.message,
     toSeverity(item.severity)
   );
-  diagnostic.code = item.code;
+  // The code carries a link to its docs anchor, so the editor shows "what is this and how do I fix
+  // it" one hover away (Spec 071). The anchor matches the `### <code>` heading on the lint page.
+  diagnostic.code = item.code
+    ? {
+        value: item.code,
+        target: vscode.Uri.parse(`https://marreta.dev/docs/reference/lint#${item.code}`),
+      }
+    : undefined;
   diagnostic.source = "marreta";
   return diagnostic;
 }

@@ -214,9 +214,19 @@ indexes reverted in favor of inference; reverted objects at tag `pre-067-revert`
   dispatched dry run (`vscode-v0.2.18`). Shipped alongside: curated release bodies for both the
   runtime and the extension (the runtime drops the auto changelog, first release has no changelog
   section by decision, the second introduces hand-curated highlights).
-- Follow-up (sister lint of 068): `shadows-injected-binding` - warn when a local shadows an injected
-  binding (`params`, `auth`, `payload`, ...). A lint concern, not reserved-word reservation; its own
-  small spec.
+- Spec 071 is delivered: a lint DX pass. Grew `marreta lint` from its minimalist eight rules into a
+  focused launch surface: `shadows-injected-binding` (subsumes the 068 sister follow-up),
+  `route-without-response` (a route that silently 204s), `match-without-fallback` (silent `Null`),
+  `non-literal-sql-identifier` (a SQL identifier built from a runtime value, the order_by injection
+  vector from the security CONCERNS), and `unused-schema` / `unused-auth-provider`, on top of inline
+  suppression (`# marreta: allow <code>`), a single rule catalog (the drift-proof source for docs +
+  editor links + an invariant test), the `reference/lint` docs page, editor `codeDescription` links,
+  and a suppress quick-fix (ordered after any real fix).
+- Follow-up (security): `db identifier hardening` - the `non-literal-sql-identifier` lint (Spec 071)
+  warns at dev-time when a `db` identifier (`order_by` / `select` alias / `like`/`in` field) is built
+  from a runtime value, the `order_by` injection vector; the runtime guard (quote, validate against
+  known columns, or reject in the query builder) is a separate security change with its own design
+  and runtime gate tier. Defense in layers with the lint, not a replacement for it.
 - The remaining public-v1 gaps should now be tracked as new explicit specs,
   not as open follow-ups from the delivered block.
 
