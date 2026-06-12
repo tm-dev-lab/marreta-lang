@@ -1,6 +1,6 @@
 # 070 - VS Code Extension Release Workflow
 
-> Status: Proposed
+> Status: Delivered
 > Type: Editor tooling + CI (release automation)
 > Scope: Give the VS Code extension a real release path in the monorepo: a versioning convention,
 > VSIX generation, and publication as a GitHub Release under a `vscode-v*` tag namespace that coexists
@@ -181,3 +181,35 @@ yet.
 
 On delivery, update both `CHANGELOG.md` and `docs/spec/SPEC.md`. See SPEC.md
 section 1.3.
+
+---
+
+## Delivery notes
+
+The extension now has a manual release path, proven end to end.
+
+- **Workflow** (`.github/workflows/release-vscode.yml`): `workflow_dispatch`, tag-equals-`package.json`
+  guard before packaging, create-tag-if-missing, single runner, VSIX via `vsce package`, GitHub
+  Release with `make_latest:false`, and Open VSX + MS Marketplace publishes each gated on their
+  secret with a loud per-channel run summary. Self-verify step asserts the release is not the API
+  `releases/latest` and re-downloads the published VSIX to check its version.
+- **Dry-run proof (AC6):** dispatched against `vscode-v0.2.18`, green. The verify step confirmed the
+  API `releases/latest` does not point at the extension tag (so `install.sh` stays safe) and the
+  published VSIX carried the expected version. The UI "Latest" chip on the sole release is cosmetic
+  and migrates to the first runtime release automatically (the extension release is `make_latest:false`).
+  One fix landed during the proof: the verify step used the API `releases/latest` endpoint instead of
+  a non-existent `gh release view --json isLatest` field.
+- **Install how-to** (`docs/guide/how-to/install-the-editor-extension.md` + SUMMARY, mirrored to the
+  site): binary-first, command-palette-first (`Extensions: Install from VSIX`, no CLI on PATH needed),
+  with the settings-path detail and the per-channel registry sections framed as forthcoming until live.
+- **Curated release bodies** (`.github/release-notes/{runtime,extension}.md`, shipped alongside): both
+  releases get an authored body. The runtime dropped `generate_release_notes` (its "What's changed"
+  plus "Full Changelog" commits link were noise on a first release, and `CHANGELOG.md` is internal by
+  its own charter). **Decision (a):** the first release ships with no changelog section; the **second**
+  release introduces hand-curated highlights in the body (not an internal-log link, not an auto dump).
+- **Channels:** code path is all three; which publish is operational (secret presence).
+  **Anti-squat checklist (do before enabling a registry):** create the `MarretaTeam` namespace on
+  Open VSX (`npx ovsx create-namespace MarretaTeam -p <token>`) and the `MarretaTeam` publisher on the
+  MS Marketplace, before setting the tokens.
+- **Gates:** core + extension green (`node --check` + VSIX package). No runtime or extension-behavior
+  change.

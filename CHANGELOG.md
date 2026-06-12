@@ -15,6 +15,14 @@ Track of all implementation progress. Use this to resume work after session loss
 
 ## Session Log
 
+### 2026-06-11 — Spec 070 VS Code Extension Release Workflow (versioning + VSIX GitHub release)
+
+- [x] `spec/070_VS_CODE_EXTENSION_RELEASE_WORKFLOW.md` — the extension's manual release path in the monorepo. `.github/workflows/release-vscode.yml` (`workflow_dispatch`): tag-equals-`package.json` guard before packaging, create-tag-if-missing, single runner, VSIX via `vsce package`, GitHub Release with `make_latest:false` under a `vscode-v*` tag namespace (so it never steals the runtime's `releases/latest` that `install.sh` resolves), and Open VSX + MS Marketplace publishes each gated on a secret with a loud per-channel run summary. A self-verify step asserts the release is not the API `releases/latest` and re-downloads the published VSIX to check its version.
+- [x] **Dry-run proof (AC6):** dispatched against `vscode-v0.2.18`, green. The verify confirmed the API `releases/latest` does not point at the extension tag and the published VSIX version matched. One fix landed during the proof: the verify used the `releases/latest` API endpoint instead of a non-existent `gh release view --json isLatest` field. The UI "Latest" chip on the sole release is cosmetic and migrates to the first runtime release.
+- [x] **Install how-to** (`docs/guide/how-to/install-the-editor-extension.md` + SUMMARY, mirrored to the site): binary-first, command-palette-first (`Extensions: Install from VSIX`), with the `marreta.path` settings detail and the registry sections framed as forthcoming until live.
+- [x] **Curated release bodies** (`.github/release-notes/{runtime,extension}.md`): both releases get an authored body. The runtime dropped `generate_release_notes` (noisy "What's changed" + "Full Changelog" commits link on a first release; `CHANGELOG.md` is internal by its own charter). Decision (a): the first release ships with no changelog section, the second introduces hand-curated highlights in the body.
+- [x] Two review gates passed (design + diff), plus a polish round (palette-first install, settings detail, lean runtime body). Core + extension gates green. Anti-squat: create the `MarretaTeam` namespace on Open VSX and the publisher on the MS Marketplace before enabling those channels. Follow-up: the second release introduces curated highlights.
+
 ### 2026-06-11 — Spec 069 Docs for Inferred Indexes and Reserved Words (guide pages for 067 + 068)
 
 - [x] `spec/069_DOCS_FOR_INFERRED_INDEXES_AND_RESERVED_WORDS.md` — the hand-authored `docs/guide` pages for two features that shipped with only their docs of record, paying the guide debt that 067 and 068 deferred. Docs-only, no runtime change.
