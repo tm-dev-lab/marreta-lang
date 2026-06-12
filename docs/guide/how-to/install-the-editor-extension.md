@@ -33,13 +33,18 @@ step 3. Windows is supported through WSL: run the same command inside your WSL d
 
 Every extension release attaches a `.vsix` file. Download the latest one from the
 [GitHub releases](https://github.com/tm-dev-lab/marreta-lang/releases) (the
-`VS Code Extension vscode-vX.Y.Z` entries), then install it:
+`VS Code Extension vscode-vX.Y.Z` entries), then install it.
 
-- **VS Code**: run `code --install-extension marreta-extension.vsix`, or open the Extensions view,
-  use the `...` menu, and choose **Install from VSIX**.
-- **Cursor**: open the Extensions view, use the `...` menu, and choose **Install from VSIX**.
+The command palette works the same in every editor and does not need a CLI on your `PATH`:
 
-The same VSIX works in any VS Code-compatible editor (VSCodium, Windsurf, and others).
+1. Open the command palette: `Ctrl+Shift+P` (macOS: `Cmd+Shift+P`).
+2. Run **Extensions: Install from VSIX**.
+3. Select the `.vsix` you downloaded.
+
+This is the path for VS Code, Cursor, VSCodium, and Windsurf alike.
+
+If you prefer the command line and have the editor's CLI on your `PATH`, the equivalent is
+`code --install-extension marreta-extension.vsix` (Cursor: `cursor --install-extension ...`).
 
 ### From the marketplace
 
@@ -53,13 +58,23 @@ Extensions view, without downloading a file:
 ## 3. Point the extension at the binary (only if needed)
 
 The extension calls `marreta` on your `PATH` by default. If the binary lives somewhere else, or the
-extension reports that the CLI was not found, set its path in your settings:
+extension reports that the CLI was not found, point it at the binary in your editor settings.
+
+The quickest way is the settings UI: open the command palette (`Ctrl+Shift+P`, macOS `Cmd+Shift+P`),
+run **Preferences: Open Settings (UI)**, search for **Marreta: Path**, and enter the full path to
+the binary.
+
+To edit the JSON directly instead, run **Preferences: Open User Settings (JSON)** from the same
+palette and add:
 
 ```json
 {
   "marreta.path": "/absolute/path/to/marreta"
 }
 ```
+
+The same setting exists at the workspace level (a `.vscode/settings.json` in the project), if you
+want the path to apply to one project rather than your whole editor.
 
 Open a `.marreta` file and the editor features activate. If anything looks off, run
 [`marreta doctor`](../reference/cli.md) to check your setup.

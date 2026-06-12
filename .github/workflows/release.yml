@@ -102,8 +102,9 @@ jobs:
       - name: Render release notes
         run: sed "s/__TAG__/${{ inputs.tag }}/g" .github/release-notes/runtime.md > "$RUNNER_TEMP/notes.md"
 
-      # The curated body (install + downloads) sits on top; generate_release_notes appends the
-      # auto "What's changed" section below it.
+      # The release body is the curated template only. The auto-generated notes are intentionally
+      # off: they appended a noisy "What's changed" plus a "Full Changelog" commits link, and the
+      # hand-maintained CHANGELOG.md is the canonical record.
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
@@ -111,4 +112,3 @@ jobs:
           name: Marreta CLI ${{ inputs.tag }}
           body_path: ${{ runner.temp }}/notes.md
           files: dist/*
-          generate_release_notes: true
