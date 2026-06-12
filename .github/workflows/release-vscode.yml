@@ -74,6 +74,9 @@ jobs:
           ( cd "$EXT_DIR" && npx --yes @vscode/vsce package --no-dependencies \
               -o "$GITHUB_WORKSPACE/marreta-extension.vsix" )
 
+      - name: Render release notes
+        run: sed "s/__TAG__/${{ inputs.tag }}/g" .github/release-notes/extension.md > "$RUNNER_TEMP/notes.md"
+
       # GitHub Release, never as repo `latest` (see header: install.sh resolves releases/latest for
       # the runtime binaries; a VSIX release as latest would break the one-line installer).
       - name: Publish GitHub Release (not latest)
@@ -81,6 +84,7 @@ jobs:
         with:
           tag_name: ${{ inputs.tag }}
           name: VS Code Extension ${{ inputs.tag }}
+          body_path: ${{ runner.temp }}/notes.md
           files: marreta-extension.vsix
           make_latest: "false"
 

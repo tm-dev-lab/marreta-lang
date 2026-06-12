@@ -88,16 +88,27 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      # Checkout (at the released tag) so the curated release-notes template is available.
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag }}
+
       - name: Download built binaries
         uses: actions/download-artifact@v5
         with:
           path: dist
           merge-multiple: true
 
+      - name: Render release notes
+        run: sed "s/__TAG__/${{ inputs.tag }}/g" .github/release-notes/runtime.md > "$RUNNER_TEMP/notes.md"
+
+      # The curated body (install + downloads) sits on top; generate_release_notes appends the
+      # auto "What's changed" section below it.
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.tag }}
-          name: ${{ inputs.tag }}
+          name: Marreta CLI ${{ inputs.tag }}
+          body_path: ${{ runner.temp }}/notes.md
           files: dist/*
           generate_release_notes: true
