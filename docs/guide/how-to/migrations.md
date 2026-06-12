@@ -71,6 +71,29 @@ Because `generate` only writes files, you can read the `up` file and confirm it 
 what you expect before anything runs. This is the review step. Commit the migration
 alongside the schema change.
 
+### Hand-written SQL
+
+A migration file is plain SQL, so you can write one by hand when the schema surface does
+not cover what you need (an index, a data backfill, a CHECK constraint). `apply` runs it
+like any other migration. When `diff` and `generate` later replay your migrations to work
+out the current schema, they tolerate the statement classes that cannot change the
+table and column model and skip them during that replay:
+
+- index statements (`CREATE INDEX`, `CREATE UNIQUE INDEX`, `DROP INDEX`),
+- data statements (`INSERT`, `UPDATE`, `DELETE`, and a `WITH ...` query),
+- anything you mark with a `-- marreta: skip-replay` line directly above the statement
+  (the general escape valve for schema-neutral SQL such as `CREATE EXTENSION` or `GRANT`).
+
+What stays rejected is column-mutating DDL the replay cannot derive a schema from
+(`ALTER TABLE ... DROP COLUMN`, `ALTER COLUMN ... TYPE`, `DROP TABLE`, renames). Express
+those as a schema edit plus a generated migration, or, if a statement is genuinely
+schema-neutral, put the `-- marreta: skip-replay` marker above it. For example:
+
+```sql
+-- marreta: skip-replay
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+```
+
 ## Apply the migration
 
 ```bash
@@ -204,6 +227,24 @@ marreta migrate apply
 The new migration captures only the delta (an `ALTER TABLE` adding `in_stock`), so
 your history is a readable trail of how the table evolved.
 
+### Changes migrations do not generate
+
+Migrations are additive by design: `generate` writes new tables, new columns, and new
+foreign keys, never destructive or in-place changes. When you make a change it cannot
+express, such as changing a column's type or nullability, deleting a field, or removing
+a schema entirely, `diff` and `generate` do not silently ignore it. They report it as
+drift and leave it for you to handle by hand:
+
+```text
+Unsupported changes detected (migrations are additive-only, handle manually):
+  products.price: type differs (history NUMERIC, schema BIGINT)
+  products.old_sku: present in history, no longer in any schema
+```
+
+No migration is written for these. Apply the change yourself with a hand-written
+migration (see "Hand-written SQL" above) once you have decided how to handle the
+existing data.
+
 ## Undo the last migration
 
 ```bash
@@ -219,7 +260,9 @@ Rolled back 20260605_183253_create_products
 ## Discard a pending migration
 
 If you generated a migration that is wrong and have **not** applied it yet, discard
-it rather than editing it by hand:
+it and generate again. (Editing a generated file by hand is fine when you know the SQL
+you want, see "Hand-written SQL" above, but for a wrong generated migration discarding
+and regenerating keeps the history aligned with the schema):
 
 ```bash
 marreta migrate discard <version>
@@ -253,6 +296,13 @@ while `apply` is the only command that changes the database.
   ordered history.
 - **An unapplied migration is wrong.** Discard it with `marreta migrate discard` and
   generate again, rather than hand-editing.
+- **`unsupported statement '...'` from `diff` or `generate`.** A migration file contains
+  column-mutating DDL the replay cannot derive a schema from (a `DROP COLUMN`, an
+  `ALTER COLUMN ... TYPE`, a `DROP TABLE`, a rename). Either express the change as a
+  schema edit plus a generated migration, or, if the statement is genuinely
+  schema-neutral, put a `-- marreta: skip-replay` line directly above it. A hand-written
+  `CREATE INDEX` or backfill does not hit this, those classes are tolerated automatically
+  (see "Hand-written SQL").
 
 ## Next steps
 

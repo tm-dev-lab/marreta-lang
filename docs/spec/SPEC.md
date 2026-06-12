@@ -232,6 +232,17 @@ indexes reverted in favor of inference; reverted objects at tag `pre-067-revert`
   synthesized `Dedent`s, a foundation touch surfaced in review and guarded by unit tests; the parked
   spec's "safe by construction" claim was corrected to the verified fact. Lint discovery was already
   recursive, no fix there.
+- Spec 073 is delivered: a migrate roundness pass. Two surgical fixes to `marreta migrate`. (1) The
+  replay that derives schema state for `diff`/`generate` rejected any SQL it did not generate,
+  trapping a developer who hand-writes a legitimate migration (an index, a backfill) with no
+  non-destructive exit; now it tolerates provably schema-neutral statement classes, honors a
+  `-- marreta: skip-replay` marker, gives an actionable rejection error, and uses a statement
+  splitter that is string-, dollar-quote-, and comment-safe. (2) `diff`/`generate` were silent about
+  changes the additive-only planner does not support (a column type change reported "up to date");
+  now they report the drift (type, nullability, removed field, removed table) without acting on it.
+  Plus a same-second `generate` collision guard. The code review caught a third gap the original live
+  probes missed (an apostrophe or `;` inside a comment in hand-written SQL), fixed in the splitter.
+  Verified live against real Postgres.
 - Follow-up (security): `db identifier hardening` - the `non-literal-sql-identifier` lint (Spec 071)
   warns at dev-time when a `db` identifier (`order_by` / `select` alias / `like`/`in` field) is built
   from a runtime value, the `order_by` injection vector; the runtime guard (quote, validate against

@@ -1543,9 +1543,14 @@ fn project_metadata_value(
 }
 
 fn run_migrate_diff(entrypoint: &ProjectEntrypoint) {
-    let (_entrypoint, _migrations_dir, plan) = compute_migration_plan(entrypoint);
+    let (_entrypoint, _migrations_dir, plan, drift) = compute_migration_plan(entrypoint);
     if plan.is_empty() {
-        println!("Database schema is up to date.");
+        if drift.is_empty() {
+            println!("Database schema is up to date.");
+        } else {
+            println!("No supported migration operations.");
+            print_schema_drift(&drift);
+        }
         return;
     }
     let create_tables = plan
@@ -1581,12 +1586,31 @@ fn run_migrate_diff(entrypoint: &ProjectEntrypoint) {
         println!("{}", statement);
         println!();
     }
+
+    print_schema_drift(&drift);
+}
+
+/// Spec 073 (2.2): print the report-only drift block (changes the additive-only planner does not
+/// support). Prints nothing when there is no drift.
+fn print_schema_drift(drift: &[marreta::migrations::SchemaDrift]) {
+    if drift.is_empty() {
+        return;
+    }
+    println!("Unsupported changes detected (migrations are additive-only, handle manually):");
+    for entry in drift {
+        println!("{}", entry.report_line());
+    }
 }
 
 fn run_migrate_generate(entrypoint: &ProjectEntrypoint) {
-    let (_entrypoint, migrations_dir, plan) = compute_migration_plan(entrypoint);
+    let (_entrypoint, migrations_dir, plan, drift) = compute_migration_plan(entrypoint);
     if plan.is_empty() {
-        println!("Database schema is up to date.");
+        if drift.is_empty() {
+            println!("Database schema is up to date.");
+        } else {
+            println!("No supported migration operations.");
+            print_schema_drift(&drift);
+        }
         return;
     }
 
@@ -1612,6 +1636,8 @@ fn run_migrate_generate(entrypoint: &ProjectEntrypoint) {
     if let Some(down_path) = migration.down_path {
         println!("{}", down_path.display());
     }
+
+    print_schema_drift(&drift);
 }
 
 fn run_migrate_status(entrypoint: &ProjectEntrypoint) {
@@ -1773,7 +1799,12 @@ fn run_migrate_rollback(entrypoint: &ProjectEntrypoint) {
 
 fn compute_migration_plan(
     entrypoint: &ProjectEntrypoint,
-) -> (PathBuf, PathBuf, Vec<marreta::migrations::MigrationOp>) {
+) -> (
+    PathBuf,
+    PathBuf,
+    Vec<marreta::migrations::MigrationOp>,
+    Vec<marreta::migrations::SchemaDrift>,
+) {
     let entrypoint = entrypoint.path.as_path();
     let project_root = entrypoint.parent().unwrap_or_else(|| Path::new("."));
     apply_project_env_defaults(project_root);
@@ -1804,10 +1835,13 @@ fn compute_migration_plan(
         }
     };
 
+    let drift = marreta::migrations::detect_schema_drift(&current_schema, &desired_tables);
+
     (
         entrypoint.to_path_buf(),
         migrations_dir,
         plan_migration(&current_schema, &desired_tables),
+        drift,
     )
 }
 

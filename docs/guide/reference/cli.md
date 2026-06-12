@@ -31,8 +31,8 @@ marreta serve
 
 | Subcommand | Purpose |
 |---|---|
-| `generate` | Writes a migration from the current `db:` schemas. |
-| `diff` | Shows the SQL a new migration would contain, without writing it. |
+| `generate` | Writes a migration from the current `db:` schemas. Reports unsupported changes (a type change, a removed field) as drift instead of writing them. |
+| `diff` | Shows the SQL a new migration would contain, without writing it. Also reports unsupported changes as drift. |
 | `status` / `list` | Show applied and pending migrations. |
 | `explain <state>` | Explains a migration state (`pending`, `changed`, `missing_local`, `workflow`). |
 | `apply` | Applies pending migrations and changes the database. |

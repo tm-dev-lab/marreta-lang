@@ -233,6 +233,10 @@ fn build_database_schema(
             column.column_name.clone(),
             DatabaseColumn {
                 name: column.column_name,
+                // Live introspection does not query type/nullability; the drift report (Spec 073)
+                // derives those from the migration files, not from this live-DB path.
+                rendered_type: None,
+                nullable: None,
             },
         );
     }

@@ -413,5 +413,78 @@ assert_contains "${diff_after_discard}" "CREATE TABLE addresses" "discard keeps 
 echo "PASS: rollback and discard"
 
 echo ""
+echo "Phase G — Hand-written SQL replay tolerance (Spec 073, the trap made green)"
+
+# Reset to the v1 schema so the only desired table is users (already applied): a clean baseline.
+swap_schema "v1"
+sleep 1
+
+hand_index_id="20300101_000001_hand_index"
+printf 'CREATE INDEX idx_users_email ON users (email);\n' > "${MIGRATIONS_DIR}/${hand_index_id}.up.sql"
+printf 'DROP INDEX idx_users_email;\n' > "${MIGRATIONS_DIR}/${hand_index_id}.down.sql"
+apply_hand="$(run_marreta migrate apply)"
+assert_contains "${apply_hand}" "Applied ${hand_index_id}" "hand-written index applies"
+idx_exists="$(sql "SELECT indexname FROM pg_indexes WHERE tablename = 'users' AND indexname = 'idx_users_email';")"
+assert_contains "${idx_exists}" "idx_users_email" "hand-written index exists in postgres"
+# The trap, made green: generate/diff keep working after a hand-written CREATE INDEX is applied.
+generate_after_hand="$(run_marreta migrate generate)"
+assert_contains "${generate_after_hand}" "up to date" "generate works after a hand-written index"
+diff_after_hand="$(run_marreta migrate diff)"
+assert_contains "${diff_after_hand}" "up to date" "diff works after a hand-written index"
+echo "PASS: hand-written SQL replay tolerance"
+
+echo ""
+echo "Phase H — skip-replay marker (Spec 073)"
+
+ext_id="20300101_000002_ext"
+printf -- '-- marreta: skip-replay\nCREATE EXTENSION IF NOT EXISTS pgcrypto;\n' > "${MIGRATIONS_DIR}/${ext_id}.up.sql"
+printf -- '-- marreta: skip-replay\nDROP EXTENSION IF EXISTS pgcrypto;\n' > "${MIGRATIONS_DIR}/${ext_id}.down.sql"
+apply_ext="$(run_marreta migrate apply)"
+assert_contains "${apply_ext}" "Applied ${ext_id}" "skip-replay migration applies"
+generate_after_ext="$(run_marreta migrate generate)"
+assert_contains "${generate_after_ext}" "up to date" "generate works past a skip-replay statement"
+echo "PASS: skip-replay marker"
+
+echo ""
+echo "Phase I — Rejected column-mutating DDL error (Spec 073)"
+
+bad_id="20300101_000003_baddl"
+printf 'ALTER TABLE users DROP COLUMN email;\n' > "${MIGRATIONS_DIR}/${bad_id}.up.sql"
+printf 'SELECT 1;\n' > "${MIGRATIONS_DIR}/${bad_id}.down.sql"
+set +e
+bad_output="$(run_marreta migrate diff 2>&1)"
+bad_exit=$?
+set -e
+[[ "${bad_exit}" -ne 0 ]] || fail "diff should fail on a column-mutating hand-written statement"
+assert_contains "${bad_output}" "${bad_id}" "rejected error names the file"
+assert_contains "${bad_output}" "DROP COLUMN email" "rejected error names the statement"
+assert_contains "${bad_output}" "skip-replay" "rejected error offers the escape valve"
+rm "${MIGRATIONS_DIR}/${bad_id}.up.sql" "${MIGRATIONS_DIR}/${bad_id}.down.sql"
+echo "PASS: rejected DDL error"
+
+echo ""
+echo "Phase J — Schema drift report (Spec 073, the silence made loud)"
+
+# Change users.email from string to integer: a type change the additive-only planner does not
+# support. The previous behaviour was a silent "up to date"; now it must be reported, not acted on.
+cat > "${SCHEMA_FILE}" <<'EOF'
+schema User
+    db: users
+
+    id: integer
+    name: string
+    email: integer
+EOF
+drift_diff="$(run_marreta migrate diff)"
+assert_contains "${drift_diff}" "Unsupported changes detected" "drift block header in diff"
+assert_contains "${drift_diff}" "users.email: type differs" "drift names the email type change"
+assert_not_contains "${drift_diff}" "Database schema is up to date." "drift is no longer silent"
+drift_generate="$(run_marreta migrate generate)"
+assert_contains "${drift_generate}" "Unsupported changes detected" "generate also reports drift"
+assert_not_contains "${drift_generate}" "Generated migration" "generate writes nothing for a drift-only change"
+swap_schema "v1"
+echo "PASS: schema drift report"
+
+echo ""
 echo "Migrations directory: ${MIGRATIONS_DIR}"
 echo "Results: PASS"
