@@ -8,8 +8,6 @@
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![web: marreta.dev](https://img.shields.io/badge/web-marreta.dev-7c3aed.svg)](https://marreta.dev)
-[![VS Code Marketplace](https://img.shields.io/badge/VS%20Code%20Marketplace-MarretaLang-7c3aed)](https://marketplace.visualstudio.com/items?itemName=MarretaTeam.marretalang)
-[![Open VSX](https://img.shields.io/badge/Open%20VSX-MarretaLang-7c3aed)](https://open-vsx.org/extension/MarretaTeam/marretalang)
 
 </div>
 
