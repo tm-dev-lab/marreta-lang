@@ -1,8 +1,8 @@
 {
   "name": "marretalang",
   "displayName": "MarretaLang",
-  "description": "Official VS Code support for the Marreta language",
-  "version": "0.2.18",
+  "description": "Syntax, completion, diagnostics, and formatting for Marreta (.marreta) REST APIs, powered by the Marreta CLI.",
+  "version": "0.2.19",
   "publisher": "MarretaTeam",
   "license": "MIT",
   "icon": "icons/marreta-mascot.png",
@@ -16,7 +16,11 @@
     "rest",
     "api",
     "dsl",
-    "backend"
+    "backend",
+    "completion",
+    "diagnostics",
+    "formatter",
+    "syntax highlighting"
   ],
   "engines": {
     "vscode": "^1.80.0"
@@ -28,6 +32,7 @@
   "categories": [
     "Programming Languages",
     "Snippets",
+    "Formatters",
     "Linters"
   ],
   "contributes": {

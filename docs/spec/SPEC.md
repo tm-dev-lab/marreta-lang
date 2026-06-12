@@ -243,6 +243,16 @@ indexes reverted in favor of inference; reverted objects at tag `pre-067-revert`
   Plus a same-second `generate` collision guard. The code review caught a third gap the original live
   probes missed (an apostrophe or `;` inside a comment in hand-written SQL), fixed in the splitter.
   Verified live against real Postgres.
+- Spec 074 is delivered: an editor extension marketplace listing. The VS Code extension's
+  `README.md` (what the VS Code Marketplace and Open VSX render as the detail page) read as an
+  internal maintainer note that shipped publishing instructions and a maintainer checklist to the
+  public page and buried the CLI requirement. Rewritten user-first (value proposition, the `marreta`
+  CLI requirement above the fold linking the canonical how-to, outcome-phrased features, settings, a
+  one-paragraph "how it works", links), text-only, with a screenshot referenced by an absolute URL so
+  it survives the marketplace's relative-URL rewrite. Maintainer content moved to `PUBLISHING.md`
+  (referencing Spec 070, not duplicating it); `package.json` got a search blurb, the `Formatters`
+  category, keywords, and a version bump to 0.2.19. No runtime change. The listing goes live on the
+  next `release-vscode.yml` publish, not on merge.
 - Follow-up (security): `db identifier hardening` - the `non-literal-sql-identifier` lint (Spec 071)
   warns at dev-time when a `db` identifier (`order_by` / `select` alias / `like`/`in` field) is built
   from a runtime value, the `order_by` injection vector; the runtime guard (quote, validate against
