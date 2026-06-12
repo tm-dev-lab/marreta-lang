@@ -119,11 +119,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          is_latest="$(gh release view "${{ inputs.tag }}" --repo "${{ github.repository }}" --json isLatest -q .isLatest)"
-          if [ "$is_latest" != "false" ]; then
-            echo "::error::release ${{ inputs.tag }} is marked latest; it must not be (would break install.sh)"
+          # install.sh resolves the releases/latest endpoint, so assert our release is not it. With
+          # make_latest:false and no runtime release yet, the endpoint 404s (no latest at all), which
+          # is also fine: our tag is not latest either way.
+          latest_tag="$(gh api "repos/${{ github.repository }}/releases/latest" --jq .tag_name 2>/dev/null || echo '<none>')"
+          if [ "$latest_tag" = "${{ inputs.tag }}" ]; then
+            echo "::error::release ${{ inputs.tag }} is the repo 'latest'; it must not be (would break install.sh)"
             exit 1
           fi
+          echo "ok: repo latest is '$latest_tag', not the extension tag"
           gh release download "${{ inputs.tag }}" --repo "${{ github.repository }}" --pattern '*.vsix' --dir verify
           unzip -o verify/*.vsix -d verify/unzipped >/dev/null
           packaged="$(node -p "require('./verify/unzipped/extension/package.json').version")"
@@ -132,4 +136,4 @@ jobs:
             echo "::error::published VSIX version '$packaged' does not match manifest '$version'"
             exit 1
           fi
-          echo "verified: isLatest=false, published VSIX version $packaged"
+          echo "verified: not repo-latest, published VSIX version $packaged"
