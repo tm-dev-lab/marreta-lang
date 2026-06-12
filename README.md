@@ -8,6 +8,8 @@
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![web: marreta.dev](https://img.shields.io/badge/web-marreta.dev-7c3aed.svg)](https://marreta.dev)
+[![VS Code Marketplace](https://img.shields.io/badge/VS%20Code%20Marketplace-MarretaLang-7c3aed)](https://marketplace.visualstudio.com/items?itemName=MarretaTeam.marretalang)
+[![Open VSX](https://img.shields.io/badge/Open%20VSX-MarretaLang-7c3aed)](https://open-vsx.org/extension/MarretaTeam/marretalang)
 
 </div>
 
@@ -139,6 +141,7 @@ The everyday commands:
 | `marreta init <name>` | Scaffold a new project (add `--with db,cache,doc,queue` for local services) |
 | `marreta serve` | Run the API (default `:8080`) |
 | `marreta test` | Run scenario tests |
+| `marreta migrate` | Generate and apply relational database migrations |
 | `marreta doctor` | Validate project structure, config, and connectivity |
 | `marreta fmt` / `marreta lint` | Format and lint the source |
 
@@ -368,26 +371,35 @@ with common infrastructure, that's the space Marreta Lang is built for.
 ## Project Status
 
 Marreta Lang is **pre-1.0**. The language and runtime are evolving and the public
-API surface is not frozen yet. The current focus is the first public release: a
-clear language identity, a stable CLI workflow, strong tests, and practical
-tooling. Use it today if you're exploring a focused DSL for REST APIs and are
-comfortable with an early-stage language.
+API surface is not frozen yet. The versioning policy keeps that manageable: a
+project declares the minimum runtime it needs with `requires_marreta` in
+`app.marreta`, enforced at load, and a breaking release bumps the version. The
+version number is a reliable signal of what runs where, and a runtime too old for a
+project is refused at load instead of failing in surprising ways. Use it today if
+you're exploring a focused DSL for REST APIs and are comfortable with an
+early-stage language.
 
 ## Documentation
 
-The project website and language documentation will live at
-[marreta.dev](https://marreta.dev) and [marreta.dev/docs](https://marreta.dev/docs).
-Until they're published, use this repository and the generated project README as
-the primary references.
+The language documentation lives at [marreta.dev/docs](https://marreta.dev/docs),
+with the project site at [marreta.dev](https://marreta.dev). That guide is the
+primary reference for using the language. This repository is the reference for
+contributors and for reading the source.
 
 For idiomatic style, naming, and project layout, see the
 [conventions reference](docs/guide/reference/conventions.md) in the documentation guide.
 
 ## Editor Support
 
-A VS Code extension is in preparation: syntax highlighting, autocomplete, hover
-docs, diagnostics, symbols, and formatting. Until the distribution model is
-finalized, treat editor support as part of the early tooling track.
+A VS Code extension provides syntax highlighting, completion, hover docs,
+diagnostics, symbols, and formatting. Install it from the
+[VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=MarretaTeam.marretalang)
+or [Open VSX](https://open-vsx.org/extension/MarretaTeam/marretalang) (for Cursor,
+VSCodium, and Windsurf) by searching **MarretaLang** in the Extensions view, or
+install the VSIX attached to each [release](https://github.com/tm-dev-lab/marreta-lang/releases)
+through the command palette (**Extensions: Install from VSIX**). The extension is a
+thin client over the `marreta` CLI, so install the binary first. Full steps are in
+[Install the editor extension](docs/guide/how-to/install-the-editor-extension.md).
 
 ## Contributing
 
@@ -406,9 +418,9 @@ containerized example validation), and Node.js (only for editor tooling).
 | `e2e/` | In-memory feature suite exercised over localhost (see `e2e/README.md`) |
 | `docs/examples/` | Example projects and functional validation suites |
 | `docs/benchmarks/`, `docs/performance/` | Performance harnesses and historical measurements |
-| `docs/editors/` | Editor tooling experiments |
+| `docs/editors/` | The published VS Code extension (a thin client over the CLI) |
 | `docs/spec/`, `docs/assets/` | Language specs and brand assets |
-| `.github/workflows/` | Manual build, release, e2e, and smoke workflows |
+| `.github/workflows/` | Manual build, release, extension release, e2e, and smoke workflows |
 
 **Before opening a pull request:**
 
