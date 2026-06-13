@@ -77,8 +77,9 @@ pub struct QueryState {
     pub count: bool,
     /// Spec 076: the table's known column names, when a `db:` schema declares it. The identifier
     /// guard's schema layer uses it to reject an unknown column. `None` for a schema-less table
-    /// (the syntactic floor still guards it).
-    pub known_columns: Option<std::collections::HashSet<String>>,
+    /// (the syntactic floor still guards it). Held as an `Arc` so promoting `db.<table>` clones a
+    /// pointer to the load-time index, not the set (perf follow-up).
+    pub known_columns: Option<std::sync::Arc<std::collections::HashSet<String>>>,
 }
 
 impl QueryState {

@@ -53,7 +53,7 @@ pub fn quote_identifier(raw: &str) -> Result<String, MarretaError> {
 /// Floor plus the optional schema layer: validate (and quote) a column identifier, and when the
 /// table's known columns are present, reject an unqualified column that is not one of them. A
 /// qualified `table.col` is guarded by the floor only (it may reference a joined table).
-fn validate_column(raw: &str, known: &Option<HashSet<String>>) -> Result<String, MarretaError> {
+fn validate_column(raw: &str, known: Option<&HashSet<String>>) -> Result<String, MarretaError> {
     let quoted = quote_identifier(raw)?;
     if let Some(cols) = known {
         let trimmed = raw.trim();
@@ -72,7 +72,7 @@ fn validate_column(raw: &str, known: &Option<HashSet<String>>) -> Result<String,
 /// keyword. Pure function, tested in isolation.
 pub fn build_order_by(
     order: &str,
-    known: &Option<HashSet<String>>,
+    known: Option<&HashSet<String>>,
 ) -> Result<String, MarretaError> {
     let mut rendered = Vec::new();
     for part in order.split(',') {
@@ -110,7 +110,7 @@ pub fn build_select(q: &QueryState) -> Result<(String, Vec<Value>), MarretaError
     } else {
         q.select_cols
             .iter()
-            .map(|c| validate_column(c, &q.known_columns))
+            .map(|c| validate_column(c, q.known_columns.as_deref()))
             .collect::<Result<Vec<_>, _>>()?
             .join(", ")
     };
@@ -137,7 +137,7 @@ pub fn build_select(q: &QueryState) -> Result<(String, Vec<Value>), MarretaError
             .iter()
             .map(|f| {
                 let param_n = params.len() + 1;
-                let column = validate_column(&f.column, &q.known_columns)?;
+                let column = validate_column(&f.column, q.known_columns.as_deref())?;
 
                 if f.op == FilterOp::In {
                     // IN expects a list — expand inline
@@ -168,7 +168,7 @@ pub fn build_select(q: &QueryState) -> Result<(String, Vec<Value>), MarretaError
     if let Some(order) = &q.order_by {
         sql.push_str(&format!(
             " ORDER BY {}",
-            build_order_by(order, &q.known_columns)?
+            build_order_by(order, q.known_columns.as_deref())?
         ));
     }
 
@@ -189,7 +189,7 @@ pub fn build_update(
     table: &str,
     data_keys: &[String],
     filters: &[FilterClause],
-    known: &Option<HashSet<String>>,
+    known: Option<&HashSet<String>>,
 ) -> Result<(String, usize), MarretaError> {
     let set_clauses: Vec<String> = data_keys
         .iter()
@@ -224,7 +224,7 @@ pub fn build_update(
 pub fn build_delete(
     table: &str,
     filters: &[FilterClause],
-    known: &Option<HashSet<String>>,
+    known: Option<&HashSet<String>>,
 ) -> Result<(String, usize), MarretaError> {
     let mut sql = format!("DELETE FROM {}", table);
     if !filters.is_empty() {
@@ -508,7 +508,7 @@ mod tests {
 
     #[test]
     fn test_update_single_field_no_filter() {
-        let (sql, base) = build_update("users", &["name".to_string()], &[], &None).unwrap();
+        let (sql, base) = build_update("users", &["name".to_string()], &[], None).unwrap();
         assert_eq!(sql, "UPDATE users SET \"name\" = $1");
         assert_eq!(base, 2);
     }
@@ -520,7 +520,7 @@ mod tests {
             "users",
             &["name".to_string(), "email".to_string()],
             &filters,
-            &None,
+            None,
         )
         .unwrap();
         assert_eq!(
@@ -538,7 +538,7 @@ mod tests {
             filter("total", FilterOp::Gt, Value::Integer(0)),
         ];
         let keys: Vec<String> = vec!["a".to_string(), "b".to_string(), "c".to_string()];
-        let (sql, base) = build_update("orders", &keys, &filters, &None).unwrap();
+        let (sql, base) = build_update("orders", &keys, &filters, None).unwrap();
         assert_eq!(
             sql,
             "UPDATE orders SET \"a\" = $1, \"b\" = $2, \"c\" = $3 WHERE \"status\" = $4 AND \"total\" > $5"
@@ -550,14 +550,14 @@ mod tests {
 
     #[test]
     fn test_delete_no_filters() {
-        let (sql, _) = build_delete("logs", &[], &None).unwrap();
+        let (sql, _) = build_delete("logs", &[], None).unwrap();
         assert_eq!(sql, "DELETE FROM logs");
     }
 
     #[test]
     fn test_delete_with_single_filter() {
         let filters = vec![eq("id", Value::Integer(99))];
-        let (sql, _) = build_delete("orders", &filters, &None).unwrap();
+        let (sql, _) = build_delete("orders", &filters, None).unwrap();
         assert_eq!(sql, "DELETE FROM orders WHERE \"id\" = $1");
     }
 
@@ -567,7 +567,7 @@ mod tests {
             eq("user_id", Value::Integer(5)),
             eq("status", Value::String("cancelled".to_string())),
         ];
-        let (sql, _) = build_delete("orders", &filters, &None).unwrap();
+        let (sql, _) = build_delete("orders", &filters, None).unwrap();
         assert_eq!(
             sql,
             "DELETE FROM orders WHERE \"user_id\" = $1 AND \"status\" = $2"
@@ -696,7 +696,7 @@ mod tests {
 
     #[test]
     fn test_update_no_filters_no_where_clause() {
-        let (sql, _) = build_update("settings", &["value".to_string()], &[], &None).unwrap();
+        let (sql, _) = build_update("settings", &["value".to_string()], &[], None).unwrap();
         assert!(!sql.contains("WHERE"));
         assert_eq!(sql, "UPDATE settings SET \"value\" = $1");
     }
@@ -707,7 +707,7 @@ mod tests {
             "users",
             &["a".to_string(), "b".to_string(), "c".to_string()],
             &[eq("id", Value::Integer(1))],
-            &None,
+            None,
         )
         .unwrap();
         assert_eq!(
@@ -724,7 +724,7 @@ mod tests {
             FilterOp::Ne,
             Value::String("active".to_string()),
         )];
-        let (sql, _) = build_delete("sessions", &filters, &None).unwrap();
+        let (sql, _) = build_delete("sessions", &filters, None).unwrap();
         assert_eq!(sql, "DELETE FROM sessions WHERE \"status\" != $1");
     }
 
@@ -792,23 +792,23 @@ mod tests {
 
     #[test]
     fn order_by_parser() {
-        let none = None;
-        assert_eq!(build_order_by("price", &none).unwrap(), "\"price\"");
+        let none: Option<&HashSet<String>> = None;
+        assert_eq!(build_order_by("price", none).unwrap(), "\"price\"");
         assert_eq!(
-            build_order_by("price desc", &none).unwrap(),
+            build_order_by("price desc", none).unwrap(),
             "\"price\" desc"
         );
         assert_eq!(
-            build_order_by("price DESC", &none).unwrap(),
+            build_order_by("price DESC", none).unwrap(),
             "\"price\" DESC"
         );
         assert_eq!(
-            build_order_by("a, b asc", &none).unwrap(),
+            build_order_by("a, b asc", none).unwrap(),
             "\"a\", \"b\" asc"
         );
         for bad in ["price; drop", "price sideways", "price asc desc", "(price)"] {
             assert!(
-                is_invalid(&build_order_by(bad, &none).unwrap_err()),
+                is_invalid(&build_order_by(bad, none).unwrap_err()),
                 "should reject: {bad}"
             );
         }
@@ -822,14 +822,16 @@ mod tests {
                 .collect(),
         );
         // known column passes
-        assert!(validate_column("status", &known).is_ok());
+        assert!(validate_column("status", known.as_ref()).is_ok());
         // floor-passing but unknown column is rejected
-        assert!(is_unknown(&validate_column("secret", &known).unwrap_err()));
+        assert!(is_unknown(
+            &validate_column("secret", known.as_ref()).unwrap_err()
+        ));
         // qualified column bypasses the schema layer (floor only), so a joined column is allowed
-        assert!(validate_column("other.col", &known).is_ok());
+        assert!(validate_column("other.col", known.as_ref()).is_ok());
         // an illegal form is still an invalid_identifier, not unknown_column
         assert!(is_invalid(
-            &validate_column("status; drop", &known).unwrap_err()
+            &validate_column("status; drop", known.as_ref()).unwrap_err()
         ));
     }
 

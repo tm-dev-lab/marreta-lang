@@ -780,6 +780,7 @@ fn test_relation_inference_uses_project_persistent_schemas_across_modules() {
             },
         )]),
         public_schemas: HashMap::new(),
+        db_columns: crate::file_loader::ProjectRuntime::build_db_column_index(&persistent_schemas),
         persistent_schemas,
         feature_flags: FeatureFlags::default(),
         task_namespaces: HashMap::new(),

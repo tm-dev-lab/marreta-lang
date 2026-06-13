@@ -557,14 +557,14 @@ impl DbDriver for PostgresDriver {
         let mut params: Vec<Value> = keys.iter().map(|k| data[k].clone()).collect();
         params.extend(q.filters.iter().map(|f| f.value.clone()));
 
-        let (sql, _) = build_update(&q.table, &keys, &q.filters, &q.known_columns)?;
+        let (sql, _) = build_update(&q.table, &keys, &q.filters, q.known_columns.as_deref())?;
         let result = bind_and_execute!(&sql, params, &self.pool).map_err(db_err)?;
         Ok(result.rows_affected())
     }
 
     async fn query_delete(&self, q: &QueryState) -> DbResult<u64> {
         let params: Vec<Value> = q.filters.iter().map(|f| f.value.clone()).collect();
-        let (sql, _) = build_delete(&q.table, &q.filters, &q.known_columns)?;
+        let (sql, _) = build_delete(&q.table, &q.filters, q.known_columns.as_deref())?;
         let result = bind_and_execute!(&sql, params, &self.pool).map_err(db_err)?;
         Ok(result.rows_affected())
     }
@@ -692,14 +692,14 @@ impl DbTx for PgTransaction {
         keys.sort();
         let mut params: Vec<Value> = keys.iter().map(|k| data[k].clone()).collect();
         params.extend(q.filters.iter().map(|f| f.value.clone()));
-        let (sql, _) = build_update(&q.table, &keys, &q.filters, &q.known_columns)?;
+        let (sql, _) = build_update(&q.table, &keys, &q.filters, q.known_columns.as_deref())?;
         let result = bind_and_execute!(&sql, params, &mut *self.inner).map_err(db_err)?;
         Ok(result.rows_affected())
     }
 
     async fn query_delete(&mut self, q: &QueryState) -> DbResult<u64> {
         let params: Vec<Value> = q.filters.iter().map(|f| f.value.clone()).collect();
-        let (sql, _) = build_delete(&q.table, &q.filters, &q.known_columns)?;
+        let (sql, _) = build_delete(&q.table, &q.filters, q.known_columns.as_deref())?;
         let result = bind_and_execute!(&sql, params, &mut *self.inner).map_err(db_err)?;
         Ok(result.rows_affected())
     }

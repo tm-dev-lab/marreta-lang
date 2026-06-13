@@ -1492,6 +1492,7 @@ mod tests {
             persistent_schemas: HashMap::new(),
             feature_flags: Default::default(),
             task_namespaces: HashMap::new(),
+            db_columns: HashMap::new(),
         };
 
         let spec = parse_spec_with_runtime(&registry, &runtime);

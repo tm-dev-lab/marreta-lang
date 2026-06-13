@@ -6,6 +6,7 @@
 /// - `export` publishes symbols into the shared public runtime
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use crate::ast::{AuthProvider, Expression, SchemaType, Statement};
 use crate::auth::build_auth_registry;
@@ -54,6 +55,10 @@ pub struct ProjectRuntime {
     /// An exported task is reached cross-file only as `stem.task()`; bare calls
     /// resolve only within the declaring file and from `app.marreta`.
     pub task_namespaces: HashMap<String, HashMap<String, Value>>,
+    /// Spec 076 + perf follow-up: `db: <table> -> column names`, computed once at load so the
+    /// identifier guard's schema layer is an O(1) lookup (cloning an `Arc`) per query, instead of
+    /// rebuilding and re-validating the whole persistent-schema model on every `db.<table>` promote.
+    pub db_columns: HashMap<String, Arc<HashSet<String>>>,
 }
 
 impl ProjectRuntime {
@@ -68,7 +73,33 @@ impl ProjectRuntime {
             persistent_schemas: HashMap::new(),
             feature_flags: FeatureFlags::default(),
             task_namespaces: HashMap::new(),
+            db_columns: HashMap::new(),
         }
+    }
+
+    /// Build the `db: <table> -> column names` index once from the persistent schemas (Spec 076
+    /// perf follow-up). Returns an empty map if the schemas cannot be modeled; the identifier
+    /// guard then falls back to the syntactic floor (still safe), it just loses the typo check.
+    pub fn build_db_column_index(
+        persistent_schemas: &HashMap<String, SchemaDefinition>,
+    ) -> HashMap<String, Arc<HashSet<String>>> {
+        let Ok(tables) = crate::migrations::build_persistent_tables(persistent_schemas) else {
+            return HashMap::new();
+        };
+        tables
+            .into_values()
+            .map(|table| {
+                let mut columns: HashSet<String> = table
+                    .columns
+                    .iter()
+                    .map(|c| c.column_name.clone())
+                    .collect();
+                for fk in &table.foreign_keys {
+                    columns.insert(fk.column_name.clone());
+                }
+                (table.table_name, Arc::new(columns))
+            })
+            .collect()
     }
 
     /// The exported task `task` under file-namespace `namespace`, if any.
@@ -708,6 +739,8 @@ fn build_project_runtime(
         }
     }
 
+    let db_columns = ProjectRuntime::build_db_column_index(persistent_schemas);
+
     Ok(ProjectRuntime {
         global_env,
         modules,
@@ -715,6 +748,7 @@ fn build_project_runtime(
         persistent_schemas: persistent_schemas.clone(),
         feature_flags,
         task_namespaces,
+        db_columns,
     })
 }
 
