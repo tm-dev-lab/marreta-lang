@@ -1,8 +1,19 @@
 name: Build
 
-# Manual only.
+# Runs on every pull request and on pushes to main (the full cross-platform matrix), and stays
+# available manually. The matrix jobs are the required status checks for merging into main.
 on:
   workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
