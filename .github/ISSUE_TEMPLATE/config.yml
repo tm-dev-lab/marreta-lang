@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and discussion
+    url: https://github.com/tm-dev-lab/marreta-lang/discussions
+    about: Ask questions, share ideas, or discuss usage in GitHub Discussions.
+  - name: Report a security vulnerability
+    url: https://github.com/tm-dev-lab/marreta-lang/security/advisories/new
+    about: Report a vulnerability privately. Do not open a public issue. See SECURITY.md.

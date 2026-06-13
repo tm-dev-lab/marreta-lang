@@ -1,0 +1,51 @@
+name: Proposal
+description: Propose a substantial, user-visible change (language, CLI, provider, or a contract)
+title: "Proposal: "
+labels: ["proposal"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Substantial changes go proposal first, so design is agreed before code is written. See
+        [CONTRIBUTING.md](https://github.com/tm-dev-lab/marreta-lang/blob/main/CONTRIBUTING.md). An
+        accepted proposal becomes a spec written from
+        [docs/spec/TEMPLATE.md](https://github.com/tm-dev-lab/marreta-lang/blob/main/docs/spec/TEMPLATE.md),
+        so these fields mirror the top of that template. For a typo or an obvious small fix, open a
+        pull request instead. For a bug, use the bug report form.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: The problem in the current behavior, grounded in what Marreta does today.
+    validations:
+      required: true
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: Why this matters, and the cost of leaving it as is.
+    validations:
+      required: true
+  - type: textarea
+    id: proposed-change
+    attributes:
+      label: Proposed change
+      description: The proposed behavior in concrete terms, with a short example where it helps.
+    validations:
+      required: true
+  - type: textarea
+    id: scope-fit
+    attributes:
+      label: Scope fit
+      description: >
+        Marreta is focused by design, and a proposal can be declined for scope alone. How does this
+        fit the language's focused scope as a tool for building REST APIs?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches you weighed, and why you prefer this one.
+    validations:
+      required: false

@@ -401,45 +401,12 @@ thin client over the `marreta` CLI, so install the binary first. Full steps are 
 
 ## Contributing
 
-Marreta Lang is early-stage, so contributions should favor small, reviewable
-changes with clear tests. Use the standard fork-and-PR flow.
-
-**Prerequisites:** Rust 1.85 or newer, Docker and Docker Compose (only for
-containerized example validation), and Node.js (only for editor tooling).
-
-**Repository layout:**
-
-| Path | Purpose |
-| --- | --- |
-| `src/` | Runtime, CLI, parser, interpreter, server, providers, tooling commands |
-| `tests/` | Rust integration tests and fixtures |
-| `e2e/` | In-memory feature suite exercised over localhost (see `e2e/README.md`) |
-| `docs/examples/` | Example projects and functional validation suites |
-| `docs/benchmarks/`, `docs/performance/` | Performance harnesses and historical measurements |
-| `docs/editors/` | The published VS Code extension (a thin client over the CLI) |
-| `docs/spec/`, `docs/assets/` | Language specs and brand assets |
-| `.github/workflows/` | Manual build, release, extension release, e2e, and smoke workflows |
-
-**Before opening a pull request:**
-
-```bash
-cargo fmt --check
-cargo clippy --all-targets -- -D warnings
-cargo test
-cargo build --release
-```
-
-If your change affects runtime behavior for generated projects, functional
-examples, migrations, or provider integration, also run the relevant example
-suites before requesting review.
-
-Guidelines:
-
-- Keep changes scoped to one problem.
-- Add or update tests for behavior changes.
-- **Do not weaken tests to make a change pass.**
-- Avoid broad refactors unless the refactor is the point.
-- Prefer explicit design notes for language semantics and public CLI behavior.
+Marreta is early-stage and developed spec-first, with the barrier proportional to the
+change: trivial fixes go straight to a pull request, substantial changes go proposal
+first, and bugs go through a structured report. The full flow, the development
+prerequisites and gates, the repository layout, and the scope expectations live in
+[CONTRIBUTING.md](CONTRIBUTING.md). Security reports go through [SECURITY.md](SECURITY.md),
+not public issues.
 
 ## License
 

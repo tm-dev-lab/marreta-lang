@@ -253,6 +253,17 @@ indexes reverted in favor of inference; reverted objects at tag `pre-067-revert`
   (referencing Spec 070, not duplicating it); `package.json` got a search blurb, the `Formatters`
   category, keywords, and a version bump to 0.2.19. No runtime change. The listing goes live on the
   next `release-vscode.yml` publish, not on merge.
+- Spec 075 is delivered: a contribution flow (tiered SDD). The repo now has a public contribution
+  path: a tiered model (trivial changes straight to PR, substantial changes proposal-first and
+  spec-driven, bugs through a structured issue), carried by a root `CONTRIBUTING.md`, GitHub issue
+  forms (`proposal.yml`, `bug_report.yml`, `config.yml`), a public canonical `docs/spec/TEMPLATE.md`
+  (the frozen 071-074 format with the three named coverage axes), a `SECURITY.md` private
+  vulnerability path, and the verbatim Contributor Covenant 2.1 (owner decision: adopted). The
+  README Contributing section shrank to a pointer, and the PR template was reworked to the escalated
+  shape that distills what specs 071-074 taught (the design gate as a linked-spec field, functional
+  coverage of new behavior, the three coverage axes line-with-reason, and a live-proof prompt).
+  Discussions and private vulnerability reporting were enabled via `gh` and confirmed by read-back
+  before merge. No code.
 - Follow-up (security): `db identifier hardening` - the `non-literal-sql-identifier` lint (Spec 071)
   warns at dev-time when a `db` identifier (`order_by` / `select` alias / `like`/`in` field) is built
   from a runtime value, the `order_by` injection vector; the runtime guard (quote, validate against

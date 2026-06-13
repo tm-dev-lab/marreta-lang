@@ -1,0 +1,57 @@
+name: Bug report
+description: Report a bug in the Marreta runtime, CLI, or tooling
+title: "Bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. A minimal reproduction is the single most useful thing you can
+        provide. For a security vulnerability, do not use this form, see
+        [SECURITY.md](https://github.com/tm-dev-lab/marreta-lang/blob/main/SECURITY.md).
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The output of `marreta --version`.
+      placeholder: "MarretaLang v0.2.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Linux
+        - macOS
+        - Windows via WSL
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: The smallest `.marreta` project or set of commands that triggers the bug.
+      render: ruby
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What happened instead. Include relevant logs, with secrets removed.
+    validations:
+      required: true
+  - type: checkboxes
+    id: not-security
+    attributes:
+      label: Confirmation
+      options:
+        - label: This is not a security vulnerability. Security issues go through the private path in SECURITY.md.
+          required: true
