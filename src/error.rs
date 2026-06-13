@@ -17,6 +17,8 @@ pub enum ErrorCode {
     ConfigError,
     InfrastructureError,
     RuntimeError,
+    InvalidIdentifier,
+    UnknownColumn,
 }
 
 impl ErrorCode {
@@ -36,6 +38,8 @@ impl ErrorCode {
             Self::ConfigError => "config_error",
             Self::InfrastructureError => "infrastructure_error",
             Self::RuntimeError => "runtime_error",
+            Self::InvalidIdentifier => "invalid_identifier",
+            Self::UnknownColumn => "unknown_column",
         }
     }
 }
@@ -218,6 +222,15 @@ pub enum MarretaError {
     UniqueConstraintViolation {
         message: String,
         operation: String,
+    },
+
+    /// Spec 076: a `db` identifier (an `order_by` clause, a `select` column, or a filter column)
+    /// failed the runtime guard. `code` is `InvalidIdentifier` (illegal form) or `UnknownColumn`
+    /// (valid form, not a known column). `message` is developer-controlled and never contains SQL,
+    /// so it is safe to surface to the client as a 400.
+    DbIdentifierError {
+        code: ErrorCode,
+        message: String,
     },
 
     // --- Queue (v0.8) ---
@@ -528,6 +541,9 @@ impl fmt::Display for MarretaError {
             Self::UniqueConstraintViolation { message, .. } => {
                 write!(f, "unique constraint violation: {}", message)
             }
+            Self::DbIdentifierError { message, .. } => {
+                write!(f, "{}", message)
+            }
             Self::NackSignal { requeue } => {
                 write!(f, "nack(requeue={})", requeue)
             }
@@ -564,6 +580,7 @@ impl MarretaError {
             Self::RaiseError { .. } => ErrorCode::RaiseError,
             Self::DbError { .. } => ErrorCode::DbError,
             Self::UniqueConstraintViolation { .. } => ErrorCode::UniqueViolation,
+            Self::DbIdentifierError { code, .. } => code.clone(),
             Self::NackSignal { .. } | Self::QueueError { .. } => ErrorCode::QueueError,
             Self::CacheError { .. } => ErrorCode::CacheError,
             Self::HttpClientError { .. } => ErrorCode::HttpClientError,
@@ -630,6 +647,7 @@ impl MarretaError {
             Self::RaiseError { message } => message.clone(),
             Self::DbError { message, .. } => message.clone(),
             Self::UniqueConstraintViolation { message, .. } => message.clone(),
+            Self::DbIdentifierError { message, .. } => message.clone(),
             Self::NackSignal { requeue } => format!("nack(requeue={})", requeue),
             Self::QueueError { message, .. } => message.clone(),
             Self::CacheError { message, .. } => message.clone(),

@@ -127,6 +127,29 @@ rows = db.native_query("SELECT * FROM items WHERE name = #{params.name}")
 It is an escape hatch, so reach for it only when the pipeline and the per-row methods
 fall short.
 
+## Column identifiers are validated
+
+Filter values are bound as parameters, but column identifiers (the `select` columns, the
+`order_by` clause, and the columns in `where`, `like`, and `in`) are part of the SQL, so the
+runtime validates and quotes them. A column identifier must be a plain name (`price`) or a
+`table.column`. Anything else is rejected with a `400 invalid_identifier`, which makes a
+runtime-derived identifier safe by construction:
+
+```ruby
+route GET "/products"
+    take query
+    # query.sort is request input. A column name passes and is sorted; an injection attempt
+    # ("price; DROP TABLE products") is rejected with a 400, never concatenated into SQL.
+    products = db.products >> order_by(query.sort) >> fetch
+    reply 200, products
+```
+
+`order_by` accepts `column` optionally followed by `asc` or `desc`, comma-separated for several
+columns (`order_by("status, created_at desc")`). When a `db:` schema declares the table, an
+unknown column is rejected with a `400 unknown_column`. The dev-time `non_literal_sql_identifier`
+lint (see the lint reference) flags a runtime-built identifier before you ship; this runtime guard
+is the defense in depth that closes it regardless.
+
 ## Notes
 
 - The database provider must be configured and reachable before `marreta serve`. Run

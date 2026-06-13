@@ -1,6 +1,25 @@
 use super::*;
 
 impl Interpreter {
+    /// Spec 076: the known column names for a `db:` table, when a schema declares it, for the
+    /// identifier guard's schema layer. `None` when no schema declares the table (the syntactic
+    /// floor still guards it) or no project runtime is available.
+    fn db_known_columns(&self, table: &str) -> Option<std::collections::HashSet<String>> {
+        let runtime = self.project_runtime.as_ref()?;
+        let tables =
+            crate::migrations::build_persistent_tables(&runtime.persistent_schemas).ok()?;
+        let persistent = tables.values().find(|t| t.table_name == table)?;
+        let mut columns: std::collections::HashSet<String> = persistent
+            .columns
+            .iter()
+            .map(|c| c.column_name.clone())
+            .collect();
+        for fk in &persistent.foreign_keys {
+            columns.insert(fk.column_name.clone());
+        }
+        Some(columns)
+    }
+
     pub(super) fn evaluate_pipeline_stage(
         &mut self,
         input: &Value,
@@ -10,7 +29,9 @@ impl Interpreter {
         // This handles `db.users >> where(...) >> fetch` — the first `>>` converts
         // `DbTable("users")` into a lazy `QueryBuilder`.
         let input = if let Value::DbTable(table) = input {
-            Value::QueryBuilder(Box::new(crate::db::driver::QueryState::new(table.clone())))
+            let mut state = crate::db::driver::QueryState::new(table.clone());
+            state.known_columns = self.db_known_columns(table);
+            Value::QueryBuilder(Box::new(state))
         } else if let Value::DocCollection(coll) = input {
             Value::DocQueryBuilder(Box::new(crate::doc::query::DocQueryState::new(
                 coll.clone(),

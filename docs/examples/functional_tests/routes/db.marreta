@@ -128,6 +128,44 @@ route GET "/db/pipeline/in"
     reply 200, { items: rows }
 
 # ═════════════════════════════════════════════════════════════════════════════
+# SECTION 18D — Identifier hardening  (Spec 076, requires DB)
+#
+# Filter values are bound as parameters, but column identifiers (order_by, select,
+# and the where/like/in column) are part of the SQL. The runtime validates and quotes
+# them, so a runtime-derived identifier (here taken from the query string) cannot
+# inject SQL: a legitimate column sorts, an injection attempt or an unknown column is
+# rejected with a clean 400 (invalid_identifier / unknown_column), never concatenated.
+# ═════════════════════════════════════════════════════════════════════════════
+
+route GET "/db/hardening/order" take query
+    # Intentional runtime identifier: the 076 runtime guard validates and quotes it.
+    # marreta: allow non_literal_sql_identifier
+    rows = db.items >> order_by(query.sort) >> fetch
+    reply 200, { items: rows }
+
+route GET "/db/hardening/like" take query
+    # marreta: allow non_literal_sql_identifier
+    rows = db.items >> like(query.col, "a%") >> fetch
+    reply 200, { items: rows }
+
+route GET "/db/hardening/in" take query
+    # marreta: allow non_literal_sql_identifier
+    rows = db.items >> in (query.col, ["alpha"]) >> fetch
+    reply 200, { items: rows }
+
+route GET "/db/hardening/select" take query
+    # marreta: allow non_literal_sql_identifier
+    rows = db.items >> select(query.col) >> fetch
+    reply 200, { items: rows }
+
+# users has a db: schema, so the schema layer applies: a floor-passing but unknown column is
+# rejected with unknown_column (items above is schema-less, so it only gets the syntactic floor).
+route GET "/db/hardening/order_known" take query
+    # marreta: allow non_literal_sql_identifier
+    rows = db.users >> order_by(query.sort) >> fetch
+    reply 200, { items: rows }
+
+# ═════════════════════════════════════════════════════════════════════════════
 # SECTION 18B — Relation navigation by convention  (requires DB)
 #
 # These routes exercise relation navigation by convention:

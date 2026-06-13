@@ -264,11 +264,19 @@ indexes reverted in favor of inference; reverted objects at tag `pre-067-revert`
   coverage of new behavior, the three coverage axes line-with-reason, and a live-proof prompt).
   Discussions and private vulnerability reporting were enabled via `gh` and confirmed by read-back
   before merge. No code.
-- Follow-up (security): `db identifier hardening` - the `non-literal-sql-identifier` lint (Spec 071)
-  warns at dev-time when a `db` identifier (`order_by` / `select` alias / `like`/`in` field) is built
-  from a runtime value, the `order_by` injection vector; the runtime guard (quote, validate against
-  known columns, or reject in the query builder) is a separate security change with its own design
-  and runtime gate tier. Defense in layers with the lint, not a replacement for it.
+- Spec 076 is delivered: db identifier hardening (the security follow-up named since 071, CONCERNS.md
+  item 6). Filter values were parameterized, but identifiers (`order_by`, `select` columns, filter
+  column names) were concatenated verbatim into the SQL, so a runtime-derived identifier
+  (`order_by(query.sort)`) was a SQL injection vector. The runtime guard lives in the query builder: a
+  universal syntactic floor validates every identifier to `name`/`table.column` and quotes it
+  (`invalid_identifier` otherwise, so injection is structurally impossible even for a schema-less
+  table), an optional schema layer rejects an unknown column (`unknown_column`) when a `db:` schema
+  declares the table, and `order_by` is a `column [asc|desc]` mini-parser so dynamic sort stays
+  first-class. `select` takes bare columns only (computed aliases were deferred per Spec 009; SPEC.md
+  4.3 corrected). Both rejections are 400 through the clean path, never leaking SQL and not logged as
+  uncaught runtime errors (consistent with 422 input validation). Defense in layers with the 071 lint
+  (lint warns at dev time, guard bars at runtime). Pure classifiers tested in isolation, four vectors
+  proven live against Postgres. The 500 error-body leak is a separate sibling item, not this spec.
 - The remaining public-v1 gaps should now be tracked as new explicit specs,
   not as open follow-ups from the delivered block.
 
@@ -1020,12 +1028,15 @@ Trying to use `map`, `keep`, or a task **before** a terminal is a startup error 
 | `>> limit(n)` | LIMIT clause. |
 | `>> offset(n)` | OFFSET clause. |
 
-`>> select(...)` accepts column names and computed aliases:
+`>> select(...)` accepts column names (a bare column or `table.column`). Identifiers are
+validated and quoted at build time (Spec 076), so a runtime-derived column is rejected rather
+than concatenated. Computed aliases (`net: "total * 0.9"`) are deferred (Spec 009, Phase 5) and
+are not accepted today:
 
 ```marreta
 rows = db.orders
     >> where(status: "active")
-    >> select(id, status, net: "total * 0.9")   # → SELECT id, status, (total * 0.9) AS net
+    >> select(id, status)
     >> fetch
 ```
 

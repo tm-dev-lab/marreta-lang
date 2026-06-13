@@ -71,6 +71,14 @@ pub struct QueryState {
     pub order_by: Option<String>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
+    /// Spec 076: a `COUNT(*)` query. Rendered by the builder as trusted SQL, so user `select_cols`
+    /// are not consulted (and not stuffed with a raw `COUNT(*)` expression that would trip the
+    /// identifier guard).
+    pub count: bool,
+    /// Spec 076: the table's known column names, when a `db:` schema declares it. The identifier
+    /// guard's schema layer uses it to reject an unknown column. `None` for a schema-less table
+    /// (the syntactic floor still guards it).
+    pub known_columns: Option<std::collections::HashSet<String>>,
 }
 
 impl QueryState {
@@ -83,6 +91,8 @@ impl QueryState {
             order_by: None,
             limit: None,
             offset: None,
+            count: false,
+            known_columns: None,
         }
     }
 }

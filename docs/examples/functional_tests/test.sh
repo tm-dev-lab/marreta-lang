@@ -730,6 +730,23 @@ get  "pipeline — like filter"  "/db/pipeline/like" 200 '(.items | length) >= 1
 get  "pipeline — in filter"    "/db/pipeline/in"   200 '(.items | length) >= 1'
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# SECTION 18D — Identifier hardening (Spec 076, DB)
+# ═══════════════════════════════════════════════════════════════════════════════
+section "18D. Identifier hardening (DB)"
+
+# Dynamic sort is first-class: a legitimate column from the query string sorts safely.
+get  "hardening — order_by dynamic legit"  "/db/hardening/order?sort=name%20desc"                    200 '.items'
+# An injection attempt in each identifier surface is rejected with a clean 400, never run.
+get  "hardening — order_by injection"      "/db/hardening/order?sort=name%3B%20DROP%20TABLE%20items" 400 '.code == "invalid_identifier"'
+# Schema layer (users has a db: schema): a valid-shape but unknown column is rejected.
+get  "hardening — order_by unknown column" "/db/hardening/order_known?sort=nope"                     400 '.code == "unknown_column"'
+get  "hardening — order_by known legit"    "/db/hardening/order_known?sort=name%20asc"               200 '.items'
+get  "hardening — like column injection"   "/db/hardening/like?col=name%29%3B%20--"                  400 '.code == "invalid_identifier"'
+get  "hardening — in column injection"     "/db/hardening/in?col=name%29%3B%20--"                    400 '.code == "invalid_identifier"'
+get  "hardening — select computed expr"    "/db/hardening/select?col=total%20%2A%200.9"              400 '.code == "invalid_identifier"'
+get  "hardening — select legit column"     "/db/hardening/select?col=name"                          200 '.items'
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # SECTION 18B — Relation navigation by convention (DB)
 # ═══════════════════════════════════════════════════════════════════════════════
 section "18B. Relation navigation by convention (DB)"

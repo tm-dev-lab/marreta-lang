@@ -1312,6 +1312,7 @@ fn status_for_error(e: &MarretaError) -> StatusCode {
             StatusCode::from_u16(*status_code as u16).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR)
         }
         MarretaError::UniqueConstraintViolation { .. } => StatusCode::CONFLICT,
+        MarretaError::DbIdentifierError { .. } => StatusCode::BAD_REQUEST,
         _ => StatusCode::INTERNAL_SERVER_ERROR,
     }
 }
@@ -1358,6 +1359,15 @@ fn error_to_response(e: MarretaError) -> Response {
                 "code": err.semantic_code(),
             });
             (StatusCode::CONFLICT, Json(body)).into_response()
+        }
+        err @ MarretaError::DbIdentifierError { .. } => {
+            // Spec 076: the message is developer-controlled and never contains SQL, so it is safe
+            // to surface. Bad input shapes the query, so it is a 400.
+            let body = serde_json::json!({
+                "error": err.display_message(),
+                "code": err.semantic_code(),
+            });
+            (StatusCode::BAD_REQUEST, Json(body)).into_response()
         }
         e => {
             let body = serde_json::json!({
@@ -1459,7 +1469,11 @@ fn log_uncaught_runtime_error(
     match e {
         MarretaError::HttpResponse { .. }
         | MarretaError::HttpError { .. }
-        | MarretaError::NackSignal { .. } => return,
+        | MarretaError::NackSignal { .. }
+        // Spec 076: a rejected db identifier is a client 400 (bad input shaped the query), not a
+        // server fault, so it is not logged as an uncaught runtime error (and cannot be used to
+        // flood the log with attack attempts).
+        | MarretaError::DbIdentifierError { .. } => return,
         _ => {}
     }
 

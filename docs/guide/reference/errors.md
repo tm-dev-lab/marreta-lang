@@ -48,6 +48,8 @@ from with `rescue` (see [Handle errors](../how-to/handle-errors.md)).
 | `io_error` | A filesystem or project-load I/O failure. |
 | `infrastructure_error` | An infrastructure dependency was unavailable. |
 | `unique_violation` | A write violated a unique index or constraint. Returned as HTTP 409. Fires for both the relational and the document provider, including an index you created by hand. |
+| `invalid_identifier` | A `db` column identifier (a `select` column, an `order_by` clause, or a `where`/`like`/`in` column) was not a valid identifier (a plain name or `table.column`). Returned as HTTP 400. Guards against a runtime-derived identifier becoming a SQL injection vector. |
+| `unknown_column` | A `db` column identifier was a valid name but is not a column of the table, when a `db:` schema declares it. Returned as HTTP 400. |
 | `runtime_error` | A generic runtime fault not covered by a more specific code. |
 
 ## Validation

@@ -517,13 +517,13 @@ impl DbDriver for PostgresDriver {
     }
 
     async fn query_fetch(&self, q: &QueryState) -> DbResult<Vec<DbRow>> {
-        let (sql, params) = build_select(q);
+        let (sql, params) = build_select(q)?;
         let rows = bind_and_fetch!(&sql, params, &self.pool).map_err(db_err)?;
         Ok(rows.iter().map(pg_row_to_map).collect())
     }
 
     async fn query_fetch_one(&self, q: &QueryState) -> DbResult<Option<DbRow>> {
-        let (mut sql, params) = build_select(q);
+        let (mut sql, params) = build_select(q)?;
         // Force LIMIT 1 if not already set
         if q.limit.is_none() {
             sql.push_str(" LIMIT 1");
@@ -534,12 +534,12 @@ impl DbDriver for PostgresDriver {
 
     async fn query_count(&self, q: &QueryState) -> DbResult<i64> {
         let mut count_q = q.clone();
-        count_q.select_cols = vec!["COUNT(*) AS count".to_string()];
+        count_q.count = true;
         count_q.order_by = None;
         count_q.limit = None;
         count_q.offset = None;
 
-        let (sql, params) = build_select(&count_q);
+        let (sql, params) = build_select(&count_q)?;
         let rows = bind_and_fetch!(&sql, params, &self.pool).map_err(db_err)?;
         match rows.first() {
             Some(row) => Ok(row.try_get::<i64, _>(0).unwrap_or(0)),
@@ -557,14 +557,14 @@ impl DbDriver for PostgresDriver {
         let mut params: Vec<Value> = keys.iter().map(|k| data[k].clone()).collect();
         params.extend(q.filters.iter().map(|f| f.value.clone()));
 
-        let (sql, _) = build_update(&q.table, &keys, &q.filters);
+        let (sql, _) = build_update(&q.table, &keys, &q.filters, &q.known_columns)?;
         let result = bind_and_execute!(&sql, params, &self.pool).map_err(db_err)?;
         Ok(result.rows_affected())
     }
 
     async fn query_delete(&self, q: &QueryState) -> DbResult<u64> {
         let params: Vec<Value> = q.filters.iter().map(|f| f.value.clone()).collect();
-        let (sql, _) = build_delete(&q.table, &q.filters);
+        let (sql, _) = build_delete(&q.table, &q.filters, &q.known_columns)?;
         let result = bind_and_execute!(&sql, params, &self.pool).map_err(db_err)?;
         Ok(result.rows_affected())
     }
@@ -655,13 +655,13 @@ impl DbTx for PgTransaction {
     }
 
     async fn query_fetch(&mut self, q: &QueryState) -> DbResult<Vec<DbRow>> {
-        let (sql, params) = build_select(q);
+        let (sql, params) = build_select(q)?;
         let rows = bind_and_fetch!(&sql, params, &mut *self.inner).map_err(db_err)?;
         Ok(rows.iter().map(pg_row_to_map).collect())
     }
 
     async fn query_fetch_one(&mut self, q: &QueryState) -> DbResult<Option<DbRow>> {
-        let (mut sql, params) = build_select(q);
+        let (mut sql, params) = build_select(q)?;
         if q.limit.is_none() {
             sql.push_str(" LIMIT 1");
         }
@@ -671,11 +671,11 @@ impl DbTx for PgTransaction {
 
     async fn query_count(&mut self, q: &QueryState) -> DbResult<i64> {
         let mut count_q = q.clone();
-        count_q.select_cols = vec!["COUNT(*) AS count".to_string()];
+        count_q.count = true;
         count_q.order_by = None;
         count_q.limit = None;
         count_q.offset = None;
-        let (sql, params) = build_select(&count_q);
+        let (sql, params) = build_select(&count_q)?;
         let rows = bind_and_fetch!(&sql, params, &mut *self.inner).map_err(db_err)?;
         match rows.first() {
             Some(row) => Ok(row.try_get::<i64, _>(0).unwrap_or(0)),
@@ -692,14 +692,14 @@ impl DbTx for PgTransaction {
         keys.sort();
         let mut params: Vec<Value> = keys.iter().map(|k| data[k].clone()).collect();
         params.extend(q.filters.iter().map(|f| f.value.clone()));
-        let (sql, _) = build_update(&q.table, &keys, &q.filters);
+        let (sql, _) = build_update(&q.table, &keys, &q.filters, &q.known_columns)?;
         let result = bind_and_execute!(&sql, params, &mut *self.inner).map_err(db_err)?;
         Ok(result.rows_affected())
     }
 
     async fn query_delete(&mut self, q: &QueryState) -> DbResult<u64> {
         let params: Vec<Value> = q.filters.iter().map(|f| f.value.clone()).collect();
-        let (sql, _) = build_delete(&q.table, &q.filters);
+        let (sql, _) = build_delete(&q.table, &q.filters, &q.known_columns)?;
         let result = bind_and_execute!(&sql, params, &mut *self.inner).map_err(db_err)?;
         Ok(result.rows_affected())
     }
