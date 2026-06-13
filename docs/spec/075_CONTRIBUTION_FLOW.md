@@ -108,7 +108,7 @@ Semantics, a format that has since evolved). Two requirements from the design re
 The most serious gap in the launch posture: there is no stated security-reporting path, so
 the default is a public issue, which for a language runtime is instant image damage. Add a
 root `SECURITY.md`: report privately via GitHub private vulnerability reporting (enable it
-in repo settings, a delivery-checklist item), with `mail.thiagomendes@gmail.com` as the
+in repo settings, a delivery-checklist item), with `contact@marreta.dev` as the
 contact fallback (owner decision on pull), what to include, response expectation, and no
 public issue for suspected vulnerabilities. The bug form and `config.yml` both point at it.
 
@@ -116,7 +116,7 @@ public issue for suspected vulnerabilities. The bug form and `config.yml` both p
 
 Owner decision on pull (2026-06-12): **adopt** the Contributor Covenant. Add a root
 `CODE_OF_CONDUCT.md` using the standard Contributor Covenant text, with the enforcement contact
-set to `mail.thiagomendes@gmail.com`. GitHub's community profile stops flagging its absence and
+set to `contact@marreta.dev`. GitHub's community profile stops flagging its absence and
 launch audiences find it.
 
 Consequence registered (design review, decision kept): this email then sits on two public pages
@@ -239,12 +239,12 @@ are listed (the bug form does this).
    the pre-064 one). It is a fillable skeleton with one line of guidance per section, and its
    Coverage analysis names the three axes explicitly (VS Code extension, e2e, documentation). It
    includes the docs-of-record reminder, and `proposal.yml` mirrors its top sections.
-4. `SECURITY.md` exists with `mail.thiagomendes@gmail.com` as the contact, no template or doc routes
+4. `SECURITY.md` exists with `contact@marreta.dev` as the contact, no template or doc routes
    a suspected vulnerability to a public issue, and private vulnerability reporting is **confirmed
    enabled** by reading the repo state back (not just firing the command), recorded in delivery
    notes.
 5. The `CODE_OF_CONDUCT.md` decision is made and recorded: adopted (Contributor Covenant, contact
-   `mail.thiagomendes@gmail.com`).
+   `contact@marreta.dev`).
 6. Discussions is **confirmed enabled** (read back via `gh api has_discussions`) before or together
    with the `config.yml` merge, so the issue-chooser contact link never 404s. The repo-settings
    actions are owner-run or owner-authorized, with the exact `gh` commands in the delivery notes.
@@ -270,10 +270,10 @@ What landed:
   spec-driven, bug through a structured report), the focused-by-design scope clause, the development
   prerequisites/layout/gates moved from the README, the PR-template pointer, the MIT
   inbound-equals-outbound line, and honest review expectations.
-- `SECURITY.md`: private vulnerability reporting (GitHub advisory plus `mail.thiagomendes@gmail.com`),
+- `SECURITY.md`: private vulnerability reporting (GitHub advisory plus `contact@marreta.dev`),
   no public issue for suspected vulnerabilities.
 - `CODE_OF_CONDUCT.md`: the verbatim Contributor Covenant 2.1 (owner decision: adopted), fetched from
-  contributor-covenant.org with the contact set to `mail.thiagomendes@gmail.com`. The earlier
+  contributor-covenant.org with the contact set to `contact@marreta.dev`. The earlier
   paraphrase was replaced after review because adopting a recognized document only has value if it is
   recognizable.
 - `.github/ISSUE_TEMPLATE/`: `proposal.yml` (mirrors the spec template's top sections),

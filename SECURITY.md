@@ -9,7 +9,7 @@ Report privately instead, through either:
 
 - GitHub private vulnerability reporting: use the **Report a vulnerability** button under the
   repository's **Security** tab. This opens a private advisory only maintainers can see.
-- Email: <mail.thiagomendes@gmail.com>.
+- Email: <contact@marreta.dev>.
 
 ## What to include
 
