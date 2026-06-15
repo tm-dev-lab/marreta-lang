@@ -566,7 +566,6 @@ fn test_route_statement_returns_null() {
         auth: None,
         allow: vec![],
         take: vec![],
-        schema: None,
         body: vec![],
         line: 1,
         column: 1,

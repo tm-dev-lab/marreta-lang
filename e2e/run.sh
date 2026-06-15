@@ -99,6 +99,45 @@ expect_body GET  "/binding/query?term=hi&limit=5" '{"term":"hi","limit":"5"}'
 expect_body GET  "/binding/headers"  '{"accept":"application/json"}' -H 'Accept: application/json'
 expect_body POST "/binding/raw"      '{"length":9,"body":"hello-raw"}' --data-binary 'hello-raw'
 
+# Spec 077: typed query — coercion of the deterministic scalar types + list, with an integer-coercion
+# proof (limit_plus_one). A repeated key feeds the list; a single value is a one-element list.
+expect_body GET "/binding/query_typed?term=hi&limit=5&active=true&tier=pro&tags=a&tags=b" \
+    '{"term":"hi","limit":5,"active":true,"tier":"pro","tags":["a","b"],"limit_plus_one":6}'
+expect_body GET "/binding/query_typed?term=x&tags=solo" \
+    '{"term":"x","limit":0,"active":false,"tier":"none","tags":["solo"],"limit_plus_one":1}'
+expect_body GET "/binding/query_typed?term=x" \
+    '{"term":"x","limit":0,"active":false,"tier":"none","tags":[],"limit_plus_one":1}'
+expect_body GET "/binding/query_typed?term=x&active=false" \
+    '{"term":"x","limit":0,"active":false,"tier":"none","tags":[],"limit_plus_one":1}'
+expect_body GET "/binding/query_typed?term=x&limit=" \
+    '{"term":"x","limit":0,"active":false,"tier":"none","tags":[],"limit_plus_one":1}'
+
+# Spec 077: typed query — validation failures all return 422.
+expect_status GET "/binding/query_typed"                          422
+expect_status GET "/binding/query_typed?term="                    422
+expect_status GET "/binding/query_typed?term=x&limit=notanumber"  422
+expect_status GET "/binding/query_typed?term=x&active=1"          422
+expect_status GET "/binding/query_typed?term=x&tier=gold"         422
+
+# Spec 077: typed headers — name mapping (both forms + case-insensitive), defaults, required 422.
+expect_body   GET "/binding/headers_typed" '{"rid":"r-1","lang":"none"}' -H 'X-Request-Id: r-1'
+expect_body   GET "/binding/headers_typed" '{"rid":"low","lang":"none"}' -H 'x-request-id: low'
+expect_body   GET "/binding/headers_typed" '{"rid":"none","lang":"pt-BR"}' -H 'Accept-Lang: pt-BR'
+expect_body   GET "/binding/headers_typed" '{"rid":"none","lang":"none"}'
+expect_body   GET "/binding/req_header"    '{"key":"secret"}' -H 'X-Api-Key: secret'
+expect_status GET "/binding/req_header"    422
+
+# Spec 077: mixed bindings — inline (one take: query typed + payload raw + headers typed),
+# multi-line (N takes: query typed + payload raw + headers raw), and all three typed together.
+expect_body POST "/binding/inline_mixed?term=hi" '{"term":"hi","body":"v","rid":"r-2"}' $JSON -d '{"value":"v"}' -H 'X-Request-Id: r-2'
+expect_body POST "/binding/multi_mixed?term=hey" '{"term":"hey","body":"b","accept":"application/json"}' $JSON -d '{"value":"b"}' -H 'Accept: application/json'
+expect_body POST "/binding/all_typed?term=combo" '{"term":"combo","user":"Ana","rid":"r-7"}' $JSON -d '{"name":"Ana","age":30,"active":true}' -H 'X-Request-Id: r-7'
+expect_status POST "/binding/all_typed?term=x" 422 $JSON -d '{"name":"Ana"}'
+
+# Spec 077: the SERVED OpenAPI spec reflects the schema-bound query — named/typed params, no deepObject.
+expect_match GET "/openapi.json" '"name": *"term"'
+expect_match GET "/openapi.json" '"in": *"query"'
+
 # live-only: real http_client self-call across all five verbs over loopback
 expect_body GET "/httpclient/verbs" '{"get":"GET","post":"POST","put":"PUT","patch":"PATCH","delete":"DELETE","get_status":200}'
 

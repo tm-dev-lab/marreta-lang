@@ -2193,6 +2193,63 @@ else
     FAIL=$((FAIL + 1))
 fi
 
+section "68. Query & header input schemas (Spec 077)"
+
+# --- typed query: coercion of every scalar type + list ---
+get "qh query — all fields coerced" \
+    "/qh/query?term=hi&limit=5&ratio=1.5&active=true&tier=pro&tags=a&tags=b" 200 \
+    '.term=="hi" and .limit==5 and .ratio==1.5 and .active==true and .tier=="pro" and .tags==["a","b"] and .limit_plus_one==6'
+get "qh query — single list value is a one-element list" \
+    "/qh/query?term=x&tags=solo" 200 '.tags==["solo"]'
+get "qh query — optional absent fields fall back" \
+    "/qh/query?term=x" 200 '.limit==0 and .ratio==0.0 and .active==false and .tier=="none" and .tags==[]'
+get "qh query — boolean false is honored" \
+    "/qh/query?term=x&active=false" 200 '.active==false'
+
+# --- validation failures (422) ---
+get "qh query — missing required term is 422" "/qh/query" 422 ''
+get "qh query — empty required term is 422 (empty=absent)" "/qh/query?term=" 422 ''
+get "qh query — non-integer limit is 422" "/qh/query?term=x&limit=abc" 422 ''
+get "qh query — non-numeric ratio is 422" "/qh/query?term=x&ratio=nope" 422 ''
+get "qh query — boolean only true/false (1 is 422)" "/qh/query?term=x&active=1" 422 ''
+get "qh query — bad enum value is 422" "/qh/query?term=x&tier=gold" 422 ''
+
+# --- decimal + instant (temporal) coercion ---
+get "qh query — decimal coerced" "/qh/query?term=x&price=9.99" 200 '((.price|tostring)=="9.99")'
+get "qh query — bad decimal is 422" "/qh/query?term=x&price=abc" 422 ''
+get "qh query — instant coerced" "/qh/query?term=x&since=2026-01-02T03:04:05Z" 200 '((.since|tostring)|test("2026-01-02"))'
+get "qh query — bad instant is 422" "/qh/query?term=x&since=nope" 422 ''
+
+# --- empty optional value is treated as absent (no coercion attempt) ---
+get "qh query — empty optional limit is absent" "/qh/query?term=x&limit=" 200 '.limit==0'
+
+# --- typed headers: name mapping by the _/- convention, both forms + case-insensitive ---
+check "qh headers — x_request_id maps X-Request-Id" GET "/qh/headers" 200 \
+    '.rid=="r-1"' -H 'X-Request-Id: r-1'
+check "qh headers — case-insensitive lowercase header" GET "/qh/headers" 200 \
+    '.rid=="low"' -H 'x-request-id: low'
+check "qh headers — accept_lang maps Accept-Lang" GET "/qh/headers" 200 \
+    '.lang=="pt-BR"' -H 'Accept-Lang: pt-BR'
+get "qh headers — absent optional headers fall back" "/qh/headers" 200 '.rid=="none" and .lang=="none"'
+
+# --- required header field: present ok, missing 422 ---
+check "qh reqheader — required header present" GET "/qh/reqheader" 200 \
+    '.key=="secret"' -H 'X-Api-Key: secret'
+get "qh reqheader — required header missing is 422" "/qh/reqheader" 422 ''
+
+# --- two take layouts + mixed raw/typed bindings, and all three typed together ---
+post "qh inline — query(typed) + payload(raw), one take" "/qh/inline?term=hello" 200 \
+    '.term=="hello" and .body=="v1"' '{"value":"v1"}'
+check "qh multiline — N take lines (query + headers)" GET "/qh/multiline?term=ml" 200 \
+    '.term=="ml" and .rid=="r-9"' -H 'X-Request-Id: r-9'
+check "qh all — query + payload + headers all typed" POST "/qh/all?term=combo" 200 \
+    '.term=="combo" and .body=="bv" and .rid=="r-7"' "${H_JSON[@]}" -d '{"value":"bv"}' -H 'X-Request-Id: r-7'
+post "qh all — payload schema still validates (422 on bad body)" "/qh/all?term=x" 422 '' '{"wrong":"field"}'
+
+# --- raw query (no schema) is unchanged: still a string map ---
+get "qh raw — untyped query still a string map" "/qh/raw?term=z&limit=99" 200 \
+    '.term=="z" and .raw_limit=="99"'
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Summary
 # ─────────────────────────────────────────────────────────────────────────────

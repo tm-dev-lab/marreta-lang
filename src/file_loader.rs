@@ -8,7 +8,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::ast::{AuthProvider, Expression, SchemaType, Statement};
+use crate::ast::{AuthProvider, Expression, SchemaType, Statement, TakeKind};
 use crate::auth::build_auth_registry;
 use crate::environment::Environment;
 use crate::error::MarretaError;
@@ -256,6 +256,57 @@ fn validate_schema_naming(schemas: &HashMap<String, SchemaDefinition>) -> Result
     Ok(())
 }
 
+/// Spec 077: a schema bound to query or headers must be flat (scalar fields and lists of scalars);
+/// a nested object (schema reference) or a `list of <Schema>` is rejected at load. A schema cannot
+/// be bound to a `raw` or `form` take (those carry no validated contract in this release).
+fn validate_take_input_schemas(
+    routes: &[RouteDefinition],
+    schemas: &HashMap<String, SchemaDefinition>,
+) -> Result<(), MarretaError> {
+    for route in routes {
+        for binding in &route.take {
+            let Some(schema_name) = &binding.schema else {
+                continue;
+            };
+            match binding.kind {
+                TakeKind::Raw | TakeKind::Form => {
+                    let take = if binding.kind == TakeKind::Raw {
+                        "raw"
+                    } else {
+                        "form"
+                    };
+                    return Err(MarretaError::InvalidSchemaDefinition {
+                        schema_name: schema_name.clone(),
+                        message: format!(
+                            "a schema cannot be bound to a `{take}` take; schema binding is for payload, query, and headers"
+                        ),
+                    });
+                }
+                TakeKind::Query | TakeKind::Headers => {
+                    let location = if binding.kind == TakeKind::Query {
+                        "query"
+                    } else {
+                        "headers"
+                    };
+                    if let Some(schema) = schemas.get(schema_name)
+                        && let Some(field) = crate::validator::first_non_flat_field(schema)
+                    {
+                        return Err(MarretaError::InvalidSchemaDefinition {
+                            schema_name: schema_name.clone(),
+                            message: format!(
+                                "schema bound to {location} must be flat: field '{field}' is a nested object or schema reference; {location} parameters cannot carry nested objects"
+                            ),
+                        });
+                    }
+                }
+                TakeKind::Payload => {}
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// Loads and bootstraps a multi-file MarretaLang project rooted at `entrypoint`.
 pub fn load_project(entrypoint: &Path) -> Result<LoadedProject, MarretaError> {
     load_project_with_feature_flags(entrypoint, FeatureFlags::default())
@@ -363,6 +414,7 @@ pub fn load_project_with_feature_flags(
     validate_schema_naming(&all_project_schemas)?;
     detect_schema_cycle(&all_project_schemas)?;
     validate_persistent_schema_references(&all_project_schemas)?;
+    validate_take_input_schemas(&merged_routes, &all_project_schemas)?;
     validate_auth_contract(&merged_routes, &merged_auth_providers)?;
     build_auth_registry(&merged_auth_providers)?;
     let persistent_schemas = collect_persistent_schemas(&all_project_schemas);
@@ -566,7 +618,6 @@ fn build_module_definition(
                 auth,
                 allow,
                 take,
-                schema,
                 body,
                 line,
                 column,
@@ -577,7 +628,6 @@ fn build_module_definition(
                     auth,
                     allow,
                     take,
-                    schema,
                     body,
                     line,
                     column,

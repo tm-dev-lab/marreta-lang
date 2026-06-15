@@ -277,6 +277,17 @@ indexes reverted in favor of inference; reverted objects at tag `pre-067-revert`
   uncaught runtime errors (consistent with 422 input validation). Defense in layers with the 071 lint
   (lint warns at dev time, guard bars at runtime). Pure classifiers tested in isolation, four vectors
   proven live against Postgres. The 500 error-body leak is a separate sibling item, not this spec.
+- Spec 077 is delivered: query and header input schemas. A `schema` can be bound to query/headers
+  per `take` (`take query as Q`, `take headers as H`), validated and coerced like the body, with two
+  `take` layouts (inline single-`take` comma-list and multi-line N-`take`, no hybrid; per-binding
+  `as`, with the route-level `schema` field removed). Query/header schemas are flat (scalars and
+  `list of <scalar>`; nested objects and `list of <Schema>` rejected at load and lint-flagged).
+  Coercion from text (bad value 422), boolean `true`/`false` only, lists via repeated key,
+  empty-as-absent; query matches the param name exactly (case-sensitive) while headers map by a
+  case-insensitive `_`/`-` convention. The OpenAPI emits named/typed params for a bound schema and
+  nothing for a raw bind (the `deepObject` query parameter was removed). Schema field defaults are
+  deliberately out of scope, a named follow-up that would add the DB column default and `migrate`
+  default-drift on top of the delivered Spec 073.
 - The remaining public-v1 gaps should now be tracked as new explicit specs,
   not as open follow-ups from the delivered block.
 
@@ -622,10 +633,13 @@ Routes are declared at the root level of the file. The Rust engine automatically
 ### 3.1 Route Declaration
 
 ```marreta
-route VERB "PATH" [take BINDING [, BINDING ...]]
+route VERB "PATH" [take BINDING [as Schema] [, BINDING [as Schema] ...]]
     # route body
     reply CODE, DATA
 ```
+
+The `take` bindings can also be written multi-line, one per indented line, as the leading statements
+of the route body (see 3.3). A route uses one layout or the other, not both.
 
 **Supported verbs:** `GET`, `POST`, `PUT`, `PATCH`, `DELETE`
 
@@ -667,6 +681,32 @@ route POST "/webhook" take raw, headers
     require headers.xsignature else fail 401, "Missing signature"
     reply 200, { received: true }
 ```
+
+**Two layouts (Spec 077).** The `take` list is written either inline — a single `take` on the route
+line, bindings comma-separated — or multi-line, one `take` per indented line before any logic. A
+route uses one or the other; a `take` on the route line plus an indented `take` is a parse error, and
+a `take` after a non-`take` statement is a parse error.
+
+```marreta
+route POST "/products/search"
+    take query as ProductSearch
+    take payload as NewItem
+    take headers as ApiHeaders
+
+    reply 200, { ok: true }
+```
+
+**Schema-bound bindings (Spec 077).** `as Schema` is per binding, so the body, query, and headers can
+each be validated and coerced against a schema (raw and unvalidated otherwise). A schema bound to
+query or headers must be **flat** (scalar fields and `list of <scalar>`; a nested object / schema
+reference or a `list of <Schema>` is a load-time error, also lint-flagged). Query and header values
+arrive as text and are coerced to the declared type (a bad value or a missing required field is a
+422); a `list of <scalar>` field is fed by a repeated key (`?tag=a&tag=b`), a boolean accepts only
+`true`/`false`, and an empty value (`?x=`) is treated as absent. Name matching differs by source: a
+**query** field matches the parameter name **exactly** (case-sensitive), while a **header** field
+matches by a case-insensitive `_`/`-` convention (`x_request_id` ↔ `X-Request-Id`). `take form` and
+`take raw` do not take a schema. The route-level `as` of earlier versions is gone — the payload
+schema now lives on the payload binding.
 
 ### 3.4 Query Parameters
 
@@ -714,7 +754,12 @@ route GET "/debug/headers" take headers
     }
 ```
 
-> **Note:** Header names with hyphens (e.g. `x-api-key`) are not accessible via dot notation because `-` is the subtraction operator. Use subscript notation instead: `headers["x-api-key"]`. Identifier-safe names work with both dot and subscript: `headers.accept` and `headers["accept"]` are equivalent.
+> **Note:** With a raw `take headers`, keys are **lowercased** (the subscript must be lowercase:
+> `headers["x-api-key"]` works, `headers["X-Api-Key"]` does not). Header names with hyphens are not
+> accessible via dot notation because `-` is the subtraction operator, so use subscript notation.
+> An identifier-safe lowercase name works with both dot and subscript: `headers.accept` and
+> `headers["accept"]` are equivalent. A schema-bound `take headers as Schema` instead maps fields by
+> the case-insensitive `_`/`-` convention (`x_api_key` captures `X-Api-Key`), read by the field name.
 
 ### 3.9 Authentication and Authorization
 

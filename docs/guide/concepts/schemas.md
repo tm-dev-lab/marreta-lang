@@ -35,6 +35,38 @@ route POST "/accounts" take payload as NewAccount
     reply 201, account
 ```
 
+## Query and header inputs
+
+The same schema also declares query-string and header inputs, with `take query as <Schema>` and
+`take headers as <Schema>`. The values arrive as text and are validated and coerced to the declared
+types (an integer that does not parse, or a required field that is missing, returns a `422`), and the
+parameters appear named and typed in the generated OpenAPI:
+
+```ruby
+schema ProductSearch
+    term: string
+    limit?: integer
+    tags?: list of string
+
+route GET "/products" take query as ProductSearch
+    reply 200, { term: query.term, limit: query.limit or 20, tags: query.tags or [] }
+```
+
+A query or header value repeated in the request (`?tags=a&tags=b`) feeds a `list of <scalar>` field.
+Because query and header parameters are flat on the wire, a schema bound to query or headers must be
+**flat**: only scalar fields and lists of scalars, never a field that references another schema (a
+nested object) or a list of objects. Binding a non-flat schema there is a load-time error (and a
+[lint](../reference/lint.md) warning). A boolean accepts only `true` or `false`, and an empty value
+(`?term=`) is treated as absent. Without a schema, `take query` / `take headers` still give a raw map
+of strings, as before.
+
+Names match differently by source. A **query** field matches the parameter name **exactly** (query
+names are case-sensitive), so a field can only bind a parameter whose name is a valid identifier
+(`complete_name` binds `?complete_name=`, not `?complete-name=`). A **header** field matches by a
+case-insensitive convention with `_` and `-` treated as the same (`x_request_id` binds
+`X-Request-Id`), because headers are case-insensitive by the HTTP standard. For the full set of
+binding variations and how to read each one, see [Read request inputs](../how-to/read-request-inputs.md).
+
 ## A response shape
 
 The same kind of schema shapes what goes out. `reply <status> as <Schema>` keeps only the

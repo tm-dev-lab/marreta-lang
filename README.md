@@ -157,6 +157,20 @@ route POST "/accounts" take payload as NewAccount
     reply 201, account
 ```
 
+Declare and validate query parameters with a flat schema, so they are typed,
+coerced from the URL, and shown in the generated OpenAPI:
+
+```ruby
+schema ProductSearch
+    term: string
+    limit?: integer
+
+route GET "/products" take query as ProductSearch
+    products = doc.products >> like(name: query.term) >> limit(query.limit or 20) >> fetch
+
+    reply 200, { products: products }
+```
+
 Read through a cache, falling back to a query pipeline on a miss:
 
 ```ruby
@@ -316,7 +330,7 @@ API behavior while Marreta Lang handles the common integration layer.
 | Concern | Marreta Lang concept |
 | --- | --- |
 | HTTP routes | `route GET "/path"` |
-| Request validation | `take payload as Schema` |
+| Request validation | `take payload as Schema`, `take query as Schema`, `take headers as Schema` |
 | Responses | `reply` and `fail` |
 | Reusable logic | `task` |
 | Relational / document data | `db.*`, `doc.*` |

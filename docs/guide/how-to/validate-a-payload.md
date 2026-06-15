@@ -131,8 +131,38 @@ the generated OpenAPI document.
 - **422 vs. 400.** Type and presence failures are validation (422) and are
   automatic. Reserve `fail 400` for your own business rules.
 
+## Validate query and headers too
+
+The same schema mechanism validates query-string and header inputs, with
+`take query as <Schema>` and `take headers as <Schema>`. Those values arrive as
+text, so they are coerced to the declared types (a non-numeric integer, or a
+missing required field, is a 422), and they appear named and typed in the
+generated OpenAPI:
+
+```ruby
+schema ProductSearch
+    term: string
+    limit?: integer
+    tags?: list of string
+
+route GET "/products" take query as ProductSearch
+    reply 200, { term: query.term, limit: query.limit or 20, tags: query.tags or [] }
+```
+
+A repeated key (`?tags=a&tags=b`) feeds a `list of <scalar>` field. A schema bound
+to query or headers must be **flat** (scalars and lists of scalars, no nested
+objects); a header field maps to its header name case-insensitively, with `_` and
+`-` treated as the same (`request_id` matches `Request-Id`). Without a schema,
+`take query` / `take headers` still give a raw map of strings.
+
+For every `take` variation (raw vs schema, inline vs multi-line) and how to read each
+input — including the exact-match rule for query and the lowercased keys for raw
+headers — see [Read request inputs](read-request-inputs.md).
+
 ## Next steps
 
+- [Read request inputs](read-request-inputs.md): every `take` variation and how to
+  read the body, query, and headers.
 - [Shape a response](shape-a-response.md): contract the response, not just the
   request.
 - [Types](../reference/types.md): every field type a schema can declare.

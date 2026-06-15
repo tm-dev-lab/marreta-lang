@@ -15,6 +15,7 @@
 - [Persist data with local services](how-to/use-local-services.md)
 - [Evolve your database with migrations](how-to/migrations.md)
 - [Use transactions](how-to/use-transactions.md)
+- [Read request inputs](how-to/read-request-inputs.md)
 - [Validate a request payload](how-to/validate-a-payload.md)
 - [Shape a response](how-to/shape-a-response.md)
 - [Test your API](how-to/test-your-api.md)

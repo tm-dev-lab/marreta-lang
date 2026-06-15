@@ -21,3 +21,35 @@ scenario "json body is bound"
     when POST "/binding/json" with { value: 99 }
     then status 200
     then response is { body: { echoed: 99 } }
+
+# Spec 077: typed query schema — coercion + validation (in-memory path)
+scenario "typed query coerces scalars and list"
+    when GET "/binding/query_typed?term=hi&limit=5&active=true&tier=pro&tags=a&tags=b"
+    then status 200
+    then response is { body: { term: "hi", limit: 5, active: true, tier: "pro", tags: ["a", "b"], limit_plus_one: 6 } }
+
+scenario "typed query single value is a one-element list"
+    when GET "/binding/query_typed?term=x&tags=solo"
+    then status 200
+    then response is { body: { tags: ["solo"] } }
+
+scenario "typed query falls back to defaults when optional absent"
+    when GET "/binding/query_typed?term=x"
+    then status 200
+    then response is { body: { term: "x", limit: 0, active: false, tier: "none", tags: [], limit_plus_one: 1 } }
+
+scenario "typed query missing required term is 422"
+    when GET "/binding/query_typed"
+    then status 422
+
+scenario "typed query non-integer limit is 422"
+    when GET "/binding/query_typed?term=x&limit=abc"
+    then status 422
+
+scenario "typed query boolean only true or false is 422"
+    when GET "/binding/query_typed?term=x&active=1"
+    then status 422
+
+scenario "typed query bad enum value is 422"
+    when GET "/binding/query_typed?term=x&tier=gold"
+    then status 422

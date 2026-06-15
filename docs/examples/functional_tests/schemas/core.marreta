@@ -131,3 +131,26 @@ export schema TreeNode
     id: integer
     label: string
     parent: TreeNode
+
+# Spec 077: flat schemas for query / header input coverage (scalars, enum, list of scalar).
+export schema QHSearch
+    term: string
+    limit?: integer
+    ratio?: float
+    active?: boolean
+    tier?: enum["free", "pro"]
+    price?: decimal
+    since?: instant
+    tags?: list of string
+
+export schema QHHeaders
+    x_request_id?: string
+    accept_lang?: string
+
+# A header schema with a required field, to exercise the 422 path on headers.
+export schema QHReqHeaders
+    x_api_key: string
+
+# A small payload schema, to exercise all three inputs typed together.
+export schema QHBody
+    value: string

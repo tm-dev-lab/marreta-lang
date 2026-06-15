@@ -23,7 +23,7 @@ use tokio::net::TcpListener;
 use tokio::sync::RwLock as AsyncRwLock;
 use tower_http::cors::{Any, CorsLayer};
 
-use crate::ast::{HttpVerb, TakeBinding};
+use crate::ast::{HttpVerb, TakeKind};
 use crate::auth::{
     ApiKeyAuthConfig, ApiKeySecretSource, AuthProviderRuntimeConfig, AuthRegistry, JwtAuthConfig,
     JwtValidationSource, build_auth_registry,
@@ -40,7 +40,7 @@ use crate::queue::driver::QueueDriver;
 use crate::route_loader::{ConsumerDefinition, ConsumerKind, RouteDefinition, RouteRegistry};
 use crate::runtime_profile::{self, ProfilePhase};
 use crate::trace_context::TraceContext;
-use crate::validator::coerce_payload;
+use crate::validator::{coerce_payload, coerce_scalar_input};
 use crate::value::{Value, ValueMap, json_to_value, value_to_json};
 use crate::version::MARRETA_VERSION;
 
@@ -589,6 +589,7 @@ fn register_route(
             let auth_runtime = Arc::clone(&auth_runtime);
             move |path_params: Path<HashMap<String, String>>,
                   Query(query_params): Query<HashMap<String, String>>,
+                  axum::extract::RawQuery(raw_query): axum::extract::RawQuery,
                   headers: HeaderMap,
                   trace_context: Option<Extension<TraceContext>>,
                   body: Bytes| {
@@ -618,6 +619,7 @@ fn register_route(
                         def,
                         path_params.0,
                         query_params,
+                        raw_query,
                         headers,
                         trace_context.map(|Extension(ctx)| ctx),
                         body,
@@ -650,6 +652,8 @@ pub(crate) async fn execute_route(
     route: RouteDefinition,
     url_params: HashMap<String, String>,
     query_params: HashMap<String, String>,
+    // Raw query string (repeated keys preserved); `None` falls back to the deduped `query_params`.
+    raw_query: Option<String>,
     headers: HeaderMap,
     trace_context: Option<TraceContext>,
     body: Bytes,
@@ -670,6 +674,7 @@ pub(crate) async fn execute_route(
         route,
         url_params,
         query_params,
+        raw_query,
         headers,
         trace_context,
         body,
@@ -689,6 +694,9 @@ async fn execute_route_profiled(
     route: RouteDefinition,
     url_params: HashMap<String, String>,
     query_params: HashMap<String, String>,
+    // Raw query string, preserving repeated keys (Spec 077: a `list of <scalar>` query field is fed
+    // by a repeated key). `None` falls back to the deduped `query_params` (single values only).
+    raw_query: Option<String>,
     headers: HeaderMap,
     trace_context: Option<TraceContext>,
     body: Bytes,
@@ -848,8 +856,9 @@ async fn execute_route_profiled(
     // Inject each `take` binding
     for binding in &route.take {
         let _timer = runtime_profile::timer(route_profile.as_ref(), ProfilePhase::RequestBinding);
-        match binding {
-            TakeBinding::Payload(name) => {
+        let name = &binding.name;
+        match binding.kind {
+            TakeKind::Payload => {
                 let val = if body.is_empty() {
                     Value::Null
                 } else {
@@ -857,8 +866,9 @@ async fn execute_route_profiled(
                         .map(|j| json_to_value(&j))
                         .unwrap_or(Value::Null)
                 };
-                // Schema validation — runs before route body execution
-                if let Some(schema_name) = &route.schema
+                // Schema validation — runs before route body execution. The payload schema is now
+                // carried on the binding (Spec 077), not a route-level field.
+                if let Some(schema_name) = &binding.schema
                     && let Some(schema_def) =
                         runtime.resolve_schema(route.module_id.as_deref(), schema_name)
                 {
@@ -878,19 +888,81 @@ async fn execute_route_profiled(
                     interp.env_set(name.clone(), val);
                 }
             }
-            TakeBinding::Query(name) => {
-                interp.env_set(
-                    name.clone(),
-                    Value::Map(Arc::new(RwLock::new(query_map.clone()))),
-                );
+            TakeKind::Query => {
+                // Spec 077: a schema-bound query is validated and coerced from the raw repeated
+                // pairs (so `list of <scalar>` is fed by a repeated key); a raw bind stays a string
+                // map, as before.
+                if let Some(schema_name) = &binding.schema
+                    && let Some(schema_def) =
+                        runtime.resolve_schema(route.module_id.as_deref(), schema_name)
+                {
+                    // Build the input multimap from the raw query string (repeated keys preserved,
+                    // for `list of <scalar>`); fall back to the deduped params when it is absent.
+                    let mut inputs: HashMap<String, Vec<String>> = HashMap::new();
+                    if let Some(raw) = raw_query.as_deref() {
+                        for (k, v) in serde_urlencoded::from_str::<Vec<(String, String)>>(raw)
+                            .unwrap_or_default()
+                        {
+                            inputs.entry(k).or_default().push(v);
+                        }
+                    } else {
+                        for (k, v) in query_params.iter() {
+                            inputs.entry(k.clone()).or_default().push(v.clone());
+                        }
+                    }
+                    let coerced = {
+                        let _timer = runtime_profile::timer(
+                            route_profile.as_ref(),
+                            ProfilePhase::SchemaCoercion,
+                        );
+                        coerce_scalar_input(&inputs, &schema_def, false)
+                    };
+                    match coerced {
+                        Ok(c) => interp.env_set(name.clone(), c),
+                        Err(e) => return error_to_response(e),
+                    }
+                } else {
+                    interp.env_set(
+                        name.clone(),
+                        Value::Map(Arc::new(RwLock::new(query_map.clone()))),
+                    );
+                }
             }
-            TakeBinding::Headers(name) => {
-                interp.env_set(
-                    name.clone(),
-                    Value::Map(Arc::new(RwLock::new(headers_map.clone()))),
-                );
+            TakeKind::Headers => {
+                // Spec 077: a schema-bound header set is coerced, matching field names to header
+                // names by the case-insensitive `_`/`-` convention; a raw bind stays a string map.
+                if let Some(schema_name) = &binding.schema
+                    && let Some(schema_def) =
+                        runtime.resolve_schema(route.module_id.as_deref(), schema_name)
+                {
+                    let mut inputs: HashMap<String, Vec<String>> = HashMap::new();
+                    for (k, v) in headers.iter() {
+                        if let Ok(s) = v.to_str() {
+                            inputs
+                                .entry(k.as_str().to_string())
+                                .or_default()
+                                .push(s.to_string());
+                        }
+                    }
+                    let coerced = {
+                        let _timer = runtime_profile::timer(
+                            route_profile.as_ref(),
+                            ProfilePhase::SchemaCoercion,
+                        );
+                        coerce_scalar_input(&inputs, &schema_def, true)
+                    };
+                    match coerced {
+                        Ok(c) => interp.env_set(name.clone(), c),
+                        Err(e) => return error_to_response(e),
+                    }
+                } else {
+                    interp.env_set(
+                        name.clone(),
+                        Value::Map(Arc::new(RwLock::new(headers_map.clone()))),
+                    );
+                }
             }
-            TakeBinding::Form(name) => {
+            TakeKind::Form => {
                 let map: ValueMap = serde_urlencoded::from_bytes::<Vec<(String, String)>>(&body)
                     .unwrap_or_default()
                     .into_iter()
@@ -898,7 +970,7 @@ async fn execute_route_profiled(
                     .collect();
                 interp.env_set(name.clone(), Value::Map(Arc::new(RwLock::new(map))));
             }
-            TakeBinding::Raw(name) => {
+            TakeKind::Raw => {
                 let s = String::from_utf8_lossy(&body).into_owned();
                 interp.env_set(name.clone(), Value::String(s));
             }
@@ -1859,6 +1931,7 @@ fn to_marreta_route_path(path: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ast::TakeBinding;
     use axum::http::StatusCode;
     use std::sync::{Mutex, OnceLock};
 
@@ -2297,7 +2370,6 @@ mod tests {
             auth: None,
             allow: vec![],
             take,
-            schema: None,
             body: vec![],
             line: 1,
             column: 1,
@@ -2325,7 +2397,6 @@ mod tests {
             }),
             allow: vec![allow],
             take: vec![],
-            schema: None,
             body: vec![crate::ast::Statement::Reply {
                 status_code: crate::ast::Expression::Integer(200),
                 content_type: crate::ast::ReplyContentType::Json,
@@ -2492,6 +2563,7 @@ mod tests {
             protected_api_key_route(auth_user_id_equals("internal_auth")),
             HashMap::new(),
             HashMap::new(),
+            None,
             HeaderMap::new(),
             None,
             Bytes::new(),
@@ -2520,6 +2592,7 @@ mod tests {
             protected_api_key_route(auth_user_id_equals("internal_auth")),
             HashMap::new(),
             HashMap::new(),
+            None,
             headers,
             None,
             Bytes::new(),
@@ -2557,6 +2630,7 @@ mod tests {
             protected_api_key_route(auth_user_id_equals("internal_auth")),
             HashMap::new(),
             HashMap::new(),
+            None,
             headers,
             None,
             Bytes::new(),
@@ -2586,6 +2660,7 @@ mod tests {
             protected_api_key_route(auth_user_id_equals("other")),
             HashMap::new(),
             HashMap::new(),
+            None,
             headers,
             None,
             Bytes::new(),
@@ -2617,6 +2692,7 @@ mod tests {
             protected_jwt_route(auth_roles_include("admin")),
             HashMap::new(),
             HashMap::new(),
+            None,
             headers,
             None,
             Bytes::new(),
@@ -2651,6 +2727,7 @@ mod tests {
             protected_jwt_route(auth_roles_include("admin")),
             HashMap::new(),
             HashMap::new(),
+            None,
             headers,
             None,
             Bytes::new(),
@@ -2688,6 +2765,7 @@ mod tests {
             protected_jwt_route(auth_roles_include("admin")),
             HashMap::new(),
             HashMap::new(),
+            None,
             headers,
             None,
             Bytes::new(),
@@ -2729,6 +2807,7 @@ mod tests {
             protected_jwt_route(auth_roles_include("admin")),
             HashMap::new(),
             HashMap::new(),
+            None,
             headers,
             None,
             Bytes::new(),
@@ -2770,6 +2849,7 @@ mod tests {
             protected_jwt_route(auth_roles_include("admin")),
             HashMap::new(),
             HashMap::new(),
+            None,
             headers,
             None,
             Bytes::new(),
@@ -2809,6 +2889,7 @@ mod tests {
             protected_jwt_route(auth_roles_include("admin")),
             HashMap::new(),
             HashMap::new(),
+            None,
             headers,
             None,
             Bytes::new(),
@@ -2847,6 +2928,7 @@ mod tests {
             protected_jwt_route(auth_roles_include("admin")),
             HashMap::new(),
             HashMap::new(),
+            None,
             headers,
             None,
             Bytes::new(),
@@ -2876,9 +2958,14 @@ mod tests {
         let mut hm = HeaderMap::new();
         hm.insert("x-token", "abc123".parse().unwrap());
         let resp = execute_route(
-            make_route(vec![TakeBinding::Headers("hdrs".into())]),
+            make_route(vec![TakeBinding {
+                kind: TakeKind::Headers,
+                name: "hdrs".into(),
+                schema: None,
+            }]),
             HashMap::new(),
             HashMap::new(),
+            None,
             hm,
             None,
             Bytes::new(),
@@ -2902,9 +2989,14 @@ mod tests {
     #[tokio::test]
     async fn test_execute_route_form_binding() {
         let resp = execute_route(
-            make_route(vec![TakeBinding::Form("form".into())]),
+            make_route(vec![TakeBinding {
+                kind: TakeKind::Form,
+                name: "form".into(),
+                schema: None,
+            }]),
             HashMap::new(),
             HashMap::new(),
+            None,
             HeaderMap::new(),
             None,
             Bytes::from("name=alice&age=30"),
@@ -2928,9 +3020,14 @@ mod tests {
     #[tokio::test]
     async fn test_execute_route_raw_binding() {
         let resp = execute_route(
-            make_route(vec![TakeBinding::Raw("body".into())]),
+            make_route(vec![TakeBinding {
+                kind: TakeKind::Raw,
+                name: "body".into(),
+                schema: None,
+            }]),
             HashMap::new(),
             HashMap::new(),
+            None,
             HeaderMap::new(),
             None,
             Bytes::from("raw content here"),
@@ -2959,6 +3056,7 @@ mod tests {
             make_route(vec![]),
             url_params,
             HashMap::new(),
+            None,
             HeaderMap::new(),
             None,
             Bytes::new(),
@@ -2987,6 +3085,7 @@ mod tests {
             make_route(vec![]),
             url_params,
             HashMap::new(),
+            None,
             HeaderMap::new(),
             None,
             Bytes::new(),
@@ -3012,9 +3111,14 @@ mod tests {
         let mut query = HashMap::new();
         query.insert("page".to_string(), "1".to_string());
         let resp = execute_route(
-            make_route(vec![TakeBinding::Query("q".into())]),
+            make_route(vec![TakeBinding {
+                kind: TakeKind::Query,
+                name: "q".into(),
+                schema: None,
+            }]),
             HashMap::new(),
             query,
+            None,
             HeaderMap::new(),
             None,
             Bytes::new(),
@@ -3038,9 +3142,14 @@ mod tests {
     #[tokio::test]
     async fn test_execute_route_payload_empty_body_is_null() {
         let resp = execute_route(
-            make_route(vec![TakeBinding::Payload("p".into())]),
+            make_route(vec![TakeBinding {
+                kind: TakeKind::Payload,
+                name: "p".into(),
+                schema: None,
+            }]),
             HashMap::new(),
             HashMap::new(),
+            None,
             HeaderMap::new(),
             None,
             Bytes::new(),
@@ -3064,9 +3173,14 @@ mod tests {
     #[tokio::test]
     async fn test_execute_route_payload_invalid_json_is_null() {
         let resp = execute_route(
-            make_route(vec![TakeBinding::Payload("p".into())]),
+            make_route(vec![TakeBinding {
+                kind: TakeKind::Payload,
+                name: "p".into(),
+                schema: None,
+            }]),
             HashMap::new(),
             HashMap::new(),
+            None,
             HeaderMap::new(),
             None,
             Bytes::from("not json"),
@@ -3183,7 +3297,6 @@ mod tests {
             auth: None,
             allow: vec![],
             take: vec![],
-            schema: None,
             body: vec![],
             line: 1,
             column: 1,
@@ -3500,6 +3613,7 @@ mod tests {
             make_route(vec![]),
             HashMap::new(),
             HashMap::new(),
+            None,
             HeaderMap::new(),
             None,
             Bytes::new(),

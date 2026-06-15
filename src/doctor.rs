@@ -1418,7 +1418,6 @@ mod tests {
             auth: None,
             allow: vec![],
             take: Vec::new(),
-            schema: None,
             body: vec![Statement::ExpressionStatement {
                 expression: Expression::MethodCall {
                     object: Box::new(Expression::PropertyAccess {
@@ -1505,7 +1504,6 @@ mod tests {
             }),
             allow: vec![],
             take: Vec::new(),
-            schema: None,
             body: Vec::new(),
             line: 1,
             column: 1,

@@ -17,3 +17,22 @@ export schema RichOrder
     tags: list of string
     created_at: instant
     address: Address
+
+# Spec 077: flat schemas for query / header input (scalars and lists of scalars only)
+export schema SearchQuery
+    term: string
+    limit?: integer
+    ratio?: float
+    active?: boolean
+    tier?: enum["free", "pro"]
+    price?: decimal
+    since?: instant
+    tags?: list of string
+
+export schema ApiHeaders
+    x_request_id?: string
+    accept_lang?: string
+
+# A header schema with a required field, to exercise the 422 path on headers.
+export schema ReqHeaders
+    x_api_key: string

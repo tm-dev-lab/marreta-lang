@@ -93,6 +93,16 @@
     "body": ["take ${1:payload} as ${2:Schema}"],
     "description": "Bind and validate the request body"
   },
+  "Take query": {
+    "prefix": "take query",
+    "body": ["take query as ${1:Schema}"],
+    "description": "Bind and validate query parameters with a flat schema"
+  },
+  "Take headers": {
+    "prefix": "take headers",
+    "body": ["take headers as ${1:Schema}"],
+    "description": "Bind and validate request headers with a flat schema"
+  },
   "Pipeline": {
     "prefix": "pipeline",
     "body": ["${1:value} >> ${2:task_name}"],

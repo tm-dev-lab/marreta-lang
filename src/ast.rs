@@ -63,7 +63,8 @@ pub enum Statement {
         column: usize,
     },
 
-    /// `route GET "/path" [take BINDING [, BINDING ...]] [as SchemaName]\n  body`
+    /// `route GET "/path" [take BINDING [as Schema] [, ...]]\n  body`, or the multi-line form with
+    /// leading indented `take` lines. Per-binding `as Schema` lives on each `TakeBinding` (Spec 077).
     Route {
         verb: HttpVerb,
         path: String,
@@ -71,10 +72,9 @@ pub enum Statement {
         auth: Option<RouteAuth>,
         /// Route-level authorization expressions from `allow expr`.
         allow: Vec<Expression>,
-        /// Zero or more request bindings (empty = no take)
+        /// Zero or more request bindings (empty = no take). A `take payload as Schema` carries the
+        /// payload schema on the binding itself (Spec 077; previously a route-level `schema` field).
         take: Vec<TakeBinding>,
-        /// Optional schema name bound via `as SchemaName` — used for payload validation
-        schema: Option<String>,
         body: Vec<Statement>,
         line: usize,
         column: usize,
@@ -289,19 +289,55 @@ pub enum ReplyContentType {
     Text,
 }
 
-/// What the `take` binding in a route captures.
-#[derive(Debug, Clone, PartialEq)]
-pub enum TakeBinding {
+/// Which request input a `take` binding captures.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TakeKind {
     /// `take payload` — JSON request body (`application/json`) → `Value::Map`
-    Payload(String),
-    /// `take query` — query string parameters → `Value::Map<String, String>`
-    Query(String),
-    /// `take headers` — request headers → `Value::Map<String, String>`
-    Headers(String),
+    Payload,
+    /// `take query` — query string parameters → `Value::Map`
+    Query,
+    /// `take headers` — request headers → `Value::Map`
+    Headers,
     /// `take form` — form-encoded body (`application/x-www-form-urlencoded`) → `Value::Map`
-    Form(String),
+    Form,
     /// `take raw` — raw request body bytes → `Value::String`
-    Raw(String),
+    Raw,
+}
+
+/// A single `take` binding: the input source, the variable name it binds to, and an optional
+/// per-binding schema (`take query as SearchQuery`). Spec 077 moved `as Schema` from a route-level
+/// clause (payload-only) to per-binding, so query and headers can be validated and coerced like the
+/// body. `schema` is `None` for a raw bind. `Raw` never carries a schema.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TakeBinding {
+    pub kind: TakeKind,
+    pub name: String,
+    pub schema: Option<String>,
+}
+
+impl TakeBinding {
+    /// Convenience constructor for a raw (schema-less) binding.
+    pub fn raw(kind: TakeKind, name: impl Into<String>) -> Self {
+        TakeBinding {
+            kind,
+            name: name.into(),
+            schema: None,
+        }
+    }
+}
+
+/// The payload schema declared on a route's `take` list, if any (Spec 077: `take payload as Schema`).
+/// Replaces the former route-level `schema` field; the request-body readers (payload validation in
+/// the server, request body in the OpenAPI generator) resolve the payload schema through this.
+pub fn payload_schema(take: &[TakeBinding]) -> Option<&str> {
+    take.iter()
+        .find(|b| b.kind == TakeKind::Payload)
+        .and_then(|b| b.schema.as_deref())
+}
+
+/// The binding (if any) for a given input kind, used to resolve its per-binding schema.
+pub fn binding_for(take: &[TakeBinding], kind: TakeKind) -> Option<&TakeBinding> {
+    take.iter().find(|b| b.kind == kind)
 }
 
 /// Task body — inline single expression or block with implicit return.
@@ -1142,14 +1178,17 @@ mod tests {
             path: "/users".into(),
             auth: None,
             allow: vec![],
-            take: vec![TakeBinding::Payload("payload".into())],
-            schema: Some("UserPayload".into()),
+            take: vec![TakeBinding {
+                kind: TakeKind::Payload,
+                name: "payload".into(),
+                schema: Some("UserPayload".into()),
+            }],
             body: vec![],
             line: 1,
             column: 1,
         };
-        if let Statement::Route { schema, .. } = stmt {
-            assert_eq!(schema, Some("UserPayload".to_string()));
+        if let Statement::Route { take, .. } = stmt {
+            assert_eq!(payload_schema(&take), Some("UserPayload"));
         } else {
             panic!("expected Route");
         }
@@ -1174,16 +1213,71 @@ mod tests {
 
     #[test]
     fn test_take_binding_variants() {
-        let p = TakeBinding::Payload("payload".into());
-        let q = TakeBinding::Query("query".into());
-        let h = TakeBinding::Headers("headers".into());
-        let f = TakeBinding::Form("form".into());
-        let r = TakeBinding::Raw("raw".into());
-        assert!(matches!(p, TakeBinding::Payload(_)));
-        assert!(matches!(q, TakeBinding::Query(_)));
-        assert!(matches!(h, TakeBinding::Headers(_)));
-        assert!(matches!(f, TakeBinding::Form(_)));
-        assert!(matches!(r, TakeBinding::Raw(_)));
+        let p = TakeBinding {
+            kind: TakeKind::Payload,
+            name: "payload".into(),
+            schema: None,
+        };
+        let q = TakeBinding {
+            kind: TakeKind::Query,
+            name: "query".into(),
+            schema: None,
+        };
+        let h = TakeBinding {
+            kind: TakeKind::Headers,
+            name: "headers".into(),
+            schema: None,
+        };
+        let f = TakeBinding {
+            kind: TakeKind::Form,
+            name: "form".into(),
+            schema: None,
+        };
+        let r = TakeBinding {
+            kind: TakeKind::Raw,
+            name: "raw".into(),
+            schema: None,
+        };
+        assert!(matches!(
+            p,
+            TakeBinding {
+                kind: TakeKind::Payload,
+                name: _,
+                schema: None
+            }
+        ));
+        assert!(matches!(
+            q,
+            TakeBinding {
+                kind: TakeKind::Query,
+                name: _,
+                schema: None
+            }
+        ));
+        assert!(matches!(
+            h,
+            TakeBinding {
+                kind: TakeKind::Headers,
+                name: _,
+                schema: None
+            }
+        ));
+        assert!(matches!(
+            f,
+            TakeBinding {
+                kind: TakeKind::Form,
+                name: _,
+                schema: None
+            }
+        ));
+        assert!(matches!(
+            r,
+            TakeBinding {
+                kind: TakeKind::Raw,
+                name: _,
+                schema: None
+            }
+        ));
     }
 
     #[test]
@@ -1194,18 +1288,39 @@ mod tests {
             auth: None,
             allow: vec![],
             take: vec![
-                TakeBinding::Payload("payload".into()),
-                TakeBinding::Headers("headers".into()),
+                TakeBinding {
+                    kind: TakeKind::Payload,
+                    name: "payload".into(),
+                    schema: None,
+                },
+                TakeBinding {
+                    kind: TakeKind::Headers,
+                    name: "headers".into(),
+                    schema: None,
+                },
             ],
-            schema: None,
             body: vec![],
             line: 1,
             column: 1,
         };
         if let Statement::Route { take, .. } = stmt {
             assert_eq!(take.len(), 2);
-            assert!(matches!(take[0], TakeBinding::Payload(_)));
-            assert!(matches!(take[1], TakeBinding::Headers(_)));
+            assert!(matches!(
+                take[0],
+                TakeBinding {
+                    kind: TakeKind::Payload,
+                    name: _,
+                    schema: None
+                }
+            ));
+            assert!(matches!(
+                take[1],
+                TakeBinding {
+                    kind: TakeKind::Headers,
+                    name: _,
+                    schema: None
+                }
+            ));
         }
     }
 
@@ -1259,7 +1374,6 @@ mod tests {
             auth: None,
             allow: vec![],
             take: vec![],
-            schema: None,
             body: vec![],
             line: 1,
             column: 1,
@@ -1283,15 +1397,25 @@ mod tests {
             path: "/users".into(),
             auth: None,
             allow: vec![],
-            take: vec![TakeBinding::Payload("payload".into())],
-            schema: None,
+            take: vec![TakeBinding {
+                kind: TakeKind::Payload,
+                name: "payload".into(),
+                schema: None,
+            }],
             body: vec![],
             line: 1,
             column: 1,
         };
         if let Statement::Route { verb, take, .. } = stmt {
             assert_eq!(verb, HttpVerb::Post);
-            assert!(matches!(take.first(), Some(TakeBinding::Payload(_))));
+            assert!(matches!(
+                take.first(),
+                Some(TakeBinding {
+                    kind: TakeKind::Payload,
+                    name: _,
+                    schema: None
+                })
+            ));
         } else {
             panic!("expected Route");
         }
@@ -1361,7 +1485,6 @@ mod tests {
             auth: None,
             allow: vec![],
             take: vec![],
-            schema: None,
             body: vec![reply],
             line: 1,
             column: 1,

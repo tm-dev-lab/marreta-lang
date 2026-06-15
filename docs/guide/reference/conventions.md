@@ -73,7 +73,28 @@ route POST "/users" take payload as UserPayload
 ```
 
 - Route paths use lowercase and hyphens: `"/user-profiles"`, `"/order-items/:id"`.
-- Bind schemas with `as SchemaName` immediately after the take binding.
+- Bind schemas with `as SchemaName` immediately after each take binding (per binding, so
+  `take query as SearchQuery, payload as NewItem` binds each independently).
+- Write the `take` bindings one of two ways, and do not mix them in the same route: inline (a single
+  `take` on the route line, bindings comma-separated) for one or a few, or multi-line (one indented
+  `take` per line, before any logic) when there are several:
+
+```ruby
+route GET "/products/search"
+    take query as ProductSearch
+    take headers as ApiHeaders
+    reply 200, { ok: true }
+```
+
+- For an optional query parameter's fallback, prefer a schema default once available; today the
+  fallback lives in the body with `or`. Note `or` fires on any falsy value, not only on absence, so
+  `query.limit or 20` turns a real `?limit=0` into `20`. For a value where `0` or `false` is
+  meaningful, check for absence explicitly rather than relying on `or`.
+- Reading inputs differs by source: a payload field nests; a **query** name matches **exactly**
+  (case-sensitive); a **header** name matches case-insensitively with `_`/`-` equivalent. A raw
+  `take query` / `take headers` is a string map keyed by the exact (query) or lowercased (header)
+  name, read with `["..."]` when the name has a hyphen. See
+  [Read request inputs](../how-to/read-request-inputs.md).
 
 ## Tasks
 

@@ -691,38 +691,15 @@ impl Parser {
 
         let path = self.expect_string()?;
 
-        let take = if matches!(self.current_kind(), TokenKind::Take) {
+        // Form 1 (inline): a single `take` on the route line, bindings comma-separated, each with an
+        // optional per-binding `as Schema` (Spec 077).
+        let mut take = if matches!(self.current_kind(), TokenKind::Take) {
             self.advance(); // consume `take`
-            let mut bindings = Vec::new();
-            loop {
-                let (name, _, _) = self.expect_identifier()?;
-                let binding = match name.as_str() {
-                    "query" => TakeBinding::Query(name),
-                    "headers" => TakeBinding::Headers(name),
-                    "form" => TakeBinding::Form(name),
-                    "raw" => TakeBinding::Raw(name),
-                    _ => TakeBinding::Payload(name),
-                };
-                bindings.push(binding);
-                if matches!(self.current_kind(), TokenKind::Comma) {
-                    self.advance(); // consume `,`
-                } else {
-                    break;
-                }
-            }
-            bindings
+            self.parse_take_bindings()?
         } else {
             vec![]
         };
-
-        // Optional `as SchemaName` — binds a schema for payload validation
-        let schema = if matches!(self.current_kind(), TokenKind::As) {
-            self.advance(); // consume `as`
-            let (name, _, _) = self.expect_identifier()?;
-            Some(name)
-        } else {
-            None
-        };
+        let inline_take = !take.is_empty();
 
         self.expect(TokenKind::Newline)?;
         self.expect(TokenKind::Indent)?;
@@ -731,6 +708,25 @@ impl Parser {
         let mut allow = Vec::new();
         let mut body = Vec::new();
         self.skip_newlines();
+
+        // Form 2 (multi-line): leading indented `take` lines, before any logic. No hybrid: if the
+        // route line already carried a `take`, an indented `take` is an error (Spec 077).
+        while matches!(self.current_kind(), TokenKind::Take) {
+            let take_line = self.current().line;
+            let take_col = self.current().column;
+            if inline_take {
+                return Err(MarretaError::UnexpectedToken {
+                    expected: "route body statement (a route uses either an inline `take` on the route line or indented `take` lines, not both)".to_string(),
+                    got_lexeme: self.current().lexeme.clone(),
+                    line: take_line,
+                    column: take_col,
+                });
+            }
+            self.advance(); // consume `take`
+            take.extend(self.parse_take_bindings()?);
+            self.expect(TokenKind::Newline)?;
+            self.skip_newlines();
+        }
 
         if matches!(self.current_kind(), TokenKind::Require)
             && self.check_next_identifier_lexeme("auth")
@@ -765,6 +761,14 @@ impl Parser {
                     column: self.current().column,
                 });
             }
+            if matches!(self.current_kind(), TokenKind::Take) {
+                return Err(MarretaError::UnexpectedToken {
+                    expected: "route body statement (`take` bindings must be the leading statements of the route, before any logic)".to_string(),
+                    got_lexeme: self.current().lexeme.clone(),
+                    line: self.current().line,
+                    column: self.current().column,
+                });
+            }
             body.push(self.parse_statement()?);
             self.skip_newlines();
         }
@@ -776,11 +780,40 @@ impl Parser {
             auth,
             allow,
             take,
-            schema,
             body,
             line,
             column,
         })
+    }
+
+    /// Parses a comma-separated list of `take` bindings, each `BINDING [as Schema]` (Spec 077). Used
+    /// for the inline form (after `take` on the route line) and for each multi-line `take` line.
+    fn parse_take_bindings(&mut self) -> Result<Vec<TakeBinding>, MarretaError> {
+        let mut bindings = Vec::new();
+        loop {
+            let (name, _, _) = self.expect_identifier()?;
+            let kind = match name.as_str() {
+                "query" => TakeKind::Query,
+                "headers" => TakeKind::Headers,
+                "form" => TakeKind::Form,
+                "raw" => TakeKind::Raw,
+                _ => TakeKind::Payload,
+            };
+            let schema = if matches!(self.current_kind(), TokenKind::As) {
+                self.advance(); // consume `as`
+                let (schema_name, _, _) = self.expect_identifier()?;
+                Some(schema_name)
+            } else {
+                None
+            };
+            bindings.push(TakeBinding { kind, name, schema });
+            if matches!(self.current_kind(), TokenKind::Comma) {
+                self.advance(); // consume `,`
+            } else {
+                break;
+            }
+        }
+        Ok(bindings)
     }
 
     fn parse_route_auth(&mut self) -> Result<RouteAuth, MarretaError> {
@@ -3043,7 +3076,9 @@ mod tests {
         {
             assert_eq!(*verb, HttpVerb::Post);
             assert_eq!(path, "/users");
-            assert!(matches!(take.first(), Some(TakeBinding::Payload(n)) if n == "payload"));
+            assert!(
+                matches!(take.first(), Some(TakeBinding { kind: TakeKind::Payload, name: n, schema: None }) if n == "payload")
+            );
         } else {
             panic!("expected Route");
         }
@@ -3053,7 +3088,9 @@ mod tests {
     fn test_parse_route_get_take_query() {
         let prog = parse("route GET \"/search\" take query\n    reply 200, null\n");
         if let Statement::Route { take, .. } = &prog[0] {
-            assert!(matches!(take.first(), Some(TakeBinding::Query(n)) if n == "query"));
+            assert!(
+                matches!(take.first(), Some(TakeBinding { kind: TakeKind::Query, name: n, schema: None }) if n == "query")
+            );
         } else {
             panic!("expected Route");
         }
@@ -3063,7 +3100,9 @@ mod tests {
     fn test_parse_route_get_take_headers() {
         let prog = parse("route GET \"/protected\" take headers\n    reply 200, null\n");
         if let Statement::Route { take, .. } = &prog[0] {
-            assert!(matches!(take.first(), Some(TakeBinding::Headers(n)) if n == "headers"));
+            assert!(
+                matches!(take.first(), Some(TakeBinding { kind: TakeKind::Headers, name: n, schema: None }) if n == "headers")
+            );
         } else {
             panic!("expected Route");
         }
@@ -3220,8 +3259,22 @@ mod tests {
         let prog = parse("route POST \"/checkout\" take payload, headers\n    reply 200, null\n");
         if let Statement::Route { take, .. } = &prog[0] {
             assert_eq!(take.len(), 2);
-            assert!(matches!(&take[0], TakeBinding::Payload(_)));
-            assert!(matches!(&take[1], TakeBinding::Headers(_)));
+            assert!(matches!(
+                &take[0],
+                TakeBinding {
+                    kind: TakeKind::Payload,
+                    name: _,
+                    schema: None
+                }
+            ));
+            assert!(matches!(
+                &take[1],
+                TakeBinding {
+                    kind: TakeKind::Headers,
+                    name: _,
+                    schema: None
+                }
+            ));
         } else {
             panic!("expected Route");
         }
@@ -3232,8 +3285,22 @@ mod tests {
         let prog = parse("route GET \"/search\" take query, payload\n    reply 200, null\n");
         if let Statement::Route { take, .. } = &prog[0] {
             assert_eq!(take.len(), 2);
-            assert!(matches!(&take[0], TakeBinding::Query(_)));
-            assert!(matches!(&take[1], TakeBinding::Payload(_)));
+            assert!(matches!(
+                &take[0],
+                TakeBinding {
+                    kind: TakeKind::Query,
+                    name: _,
+                    schema: None
+                }
+            ));
+            assert!(matches!(
+                &take[1],
+                TakeBinding {
+                    kind: TakeKind::Payload,
+                    name: _,
+                    schema: None
+                }
+            ));
         } else {
             panic!("expected Route");
         }
@@ -3243,7 +3310,14 @@ mod tests {
     fn test_parse_route_take_form() {
         let prog = parse("route POST \"/contact\" take form\n    reply 200, null\n");
         if let Statement::Route { take, .. } = &prog[0] {
-            assert!(matches!(take.first(), Some(TakeBinding::Form(_))));
+            assert!(matches!(
+                take.first(),
+                Some(TakeBinding {
+                    kind: TakeKind::Form,
+                    name: _,
+                    schema: None
+                })
+            ));
         } else {
             panic!("expected Route");
         }
@@ -3253,7 +3327,14 @@ mod tests {
     fn test_parse_route_take_raw() {
         let prog = parse("route POST \"/webhook\" take raw\n    reply 200, null\n");
         if let Statement::Route { take, .. } = &prog[0] {
-            assert!(matches!(take.first(), Some(TakeBinding::Raw(_))));
+            assert!(matches!(
+                take.first(),
+                Some(TakeBinding {
+                    kind: TakeKind::Raw,
+                    name: _,
+                    schema: None
+                })
+            ));
         } else {
             panic!("expected Route");
         }
@@ -3264,8 +3345,22 @@ mod tests {
         let prog = parse("route POST \"/webhook\" take raw, headers\n    reply 200, null\n");
         if let Statement::Route { take, .. } = &prog[0] {
             assert_eq!(take.len(), 2);
-            assert!(matches!(&take[0], TakeBinding::Raw(_)));
-            assert!(matches!(&take[1], TakeBinding::Headers(_)));
+            assert!(matches!(
+                &take[0],
+                TakeBinding {
+                    kind: TakeKind::Raw,
+                    name: _,
+                    schema: None
+                }
+            ));
+            assert!(matches!(
+                &take[1],
+                TakeBinding {
+                    kind: TakeKind::Headers,
+                    name: _,
+                    schema: None
+                }
+            ));
         } else {
             panic!("expected Route");
         }
@@ -3474,9 +3569,16 @@ mod tests {
     fn test_parse_route_with_schema_binding() {
         let src = "route POST \"/users\" take payload as UserPayload\n    reply 201, { ok: true }";
         let prog = parse(src);
-        if let Statement::Route { schema, take, .. } = &prog[0] {
-            assert_eq!(schema.as_deref(), Some("UserPayload"));
-            assert!(matches!(take.first(), Some(TakeBinding::Payload(_))));
+        if let Statement::Route { take, .. } = &prog[0] {
+            assert_eq!(crate::ast::payload_schema(take), Some("UserPayload"));
+            assert!(matches!(
+                take.first(),
+                Some(TakeBinding {
+                    kind: TakeKind::Payload,
+                    schema: Some(_),
+                    ..
+                })
+            ));
         } else {
             panic!("expected Route");
         }
@@ -3486,8 +3588,8 @@ mod tests {
     fn test_parse_route_without_schema_binding() {
         let src = "route POST \"/users\" take payload\n    reply 201, { ok: true }";
         let prog = parse(src);
-        if let Statement::Route { schema, .. } = &prog[0] {
-            assert!(schema.is_none());
+        if let Statement::Route { take, .. } = &prog[0] {
+            assert_eq!(crate::ast::payload_schema(take), None);
         } else {
             panic!("expected Route");
         }
@@ -3498,12 +3600,56 @@ mod tests {
         // Schema binding only valid with take, but parser shouldn't crash without it
         let src = "route GET \"/health\"\n    reply 200, { ok: true }";
         let prog = parse(src);
-        if let Statement::Route { schema, take, .. } = &prog[0] {
-            assert!(schema.is_none());
+        if let Statement::Route { take, .. } = &prog[0] {
+            assert!(crate::ast::payload_schema(take).is_none());
             assert!(take.is_empty());
         } else {
             panic!("expected Route");
         }
+    }
+
+    #[test]
+    fn test_parse_route_multiline_take() {
+        let src = "route GET \"/search\"\n    take query as SearchQuery\n    take headers\n    reply 200, { ok: true }";
+        let prog = parse(src);
+        if let Statement::Route { take, body, .. } = &prog[0] {
+            assert_eq!(take.len(), 2);
+            assert_eq!(take[0].kind, TakeKind::Query);
+            assert_eq!(take[0].schema.as_deref(), Some("SearchQuery"));
+            assert_eq!(take[1].kind, TakeKind::Headers);
+            assert!(take[1].schema.is_none());
+            assert!(!body.is_empty());
+        } else {
+            panic!("expected Route");
+        }
+    }
+
+    #[test]
+    fn test_parse_route_inline_multiple_with_per_binding_schema() {
+        let src = "route POST \"/search\" take query as Q, payload as P, headers\n    reply 200, { ok: true }";
+        let prog = parse(src);
+        if let Statement::Route { take, .. } = &prog[0] {
+            assert_eq!(take.len(), 3);
+            assert_eq!(take[0].schema.as_deref(), Some("Q"));
+            assert_eq!(take[1].schema.as_deref(), Some("P"));
+            assert!(take[2].schema.is_none());
+        } else {
+            panic!("expected Route");
+        }
+    }
+
+    #[test]
+    fn test_parse_route_hybrid_take_is_error() {
+        // A `take` on the route line plus an indented `take` is a hybrid — rejected (Spec 077).
+        let src = "route POST \"/search\" take query as Q\n    take payload as P\n    reply 200, { ok: true }";
+        let _ = parse_err(src);
+    }
+
+    #[test]
+    fn test_parse_route_take_after_logic_is_error() {
+        // `take` must lead the route body, before any logic (Spec 077).
+        let src = "route GET \"/search\"\n    x = 1\n    take query\n    reply 200, { ok: true }";
+        let _ = parse_err(src);
     }
 
     #[test]

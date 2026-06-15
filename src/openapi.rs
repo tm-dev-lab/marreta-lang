@@ -8,7 +8,7 @@ use serde_json::{Value as Json, json};
 
 use crate::ast::{
     Argument, AuthProvider, Expression, HttpVerb, MapStatement, PipelineStage, ReplyContentType,
-    RescueHandler, SchemaType, Statement, TakeBinding, TaskBody,
+    RescueHandler, SchemaType, Statement, TakeKind, TaskBody, payload_schema,
 };
 use crate::file_loader::ProjectRuntime;
 use crate::route_loader::{ConsumerKind, RouteDefinition, RouteRegistry, SchemaDefinition};
@@ -43,6 +43,7 @@ fn build_inner(
     let components_schemas = build_component_schemas(registry, runtime);
 
     let component_names: HashSet<String> = components_schemas.keys().cloned().collect();
+    let resolved_defs = resolve_all_schema_defs(registry, runtime);
 
     // --- Build paths ---
     let mut tag_names: Vec<String> = Vec::new();
@@ -61,7 +62,7 @@ fn build_inner(
             tag_names.push(tag.clone());
         }
 
-        let mut operation = build_operation(route, &tag, &component_names);
+        let mut operation = build_operation(route, &tag, &component_names, &resolved_defs);
         operation["operationId"] = json!(operation_id(route, &mut operation_ids));
 
         if let Some(request_body) = build_request_body(route, &component_names) {
@@ -134,10 +135,12 @@ fn build_inner(
     serde_json::to_string_pretty(&spec).unwrap_or_else(|_| "{}".to_string())
 }
 
-fn build_component_schemas(
+/// Resolve every schema reachable from the routes and schemas into a name → definition map (Spec
+/// 077: shared by the component-schema JSON and the named query/header parameter generation).
+fn resolve_all_schema_defs(
     registry: &RouteRegistry,
     runtime: Option<&ProjectRuntime>,
-) -> HashMap<String, Json> {
+) -> HashMap<String, SchemaDefinition> {
     let mut resolved: HashMap<String, SchemaDefinition> = registry.schemas.clone();
     let mut pending = Vec::new();
 
@@ -161,6 +164,13 @@ fn build_component_schemas(
     }
 
     resolved
+}
+
+fn build_component_schemas(
+    registry: &RouteRegistry,
+    runtime: Option<&ProjectRuntime>,
+) -> HashMap<String, Json> {
+    resolve_all_schema_defs(registry, runtime)
         .into_iter()
         .map(|(name, schema)| (name, schema_definition_to_openapi(&schema)))
         .collect()
@@ -201,9 +211,15 @@ fn resolve_schema_for_docs(
 
 fn collect_route_schema_refs(route: &RouteDefinition, out: &mut Vec<(String, Option<String>)>) {
     if has_payload_binding(route)
-        && let Some(schema) = &route.schema
+        && let Some(schema) = payload_schema(&route.take)
     {
-        out.push((schema.clone(), route.module_id.clone()));
+        out.push((schema.to_string(), route.module_id.clone()));
+    }
+    // Spec 077: query and header schemas also contribute component refs.
+    for kind in [TakeKind::Query, TakeKind::Headers] {
+        if let Some(schema) = binding_schema(route, kind) {
+            out.push((schema.to_string(), route.module_id.clone()));
+        }
     }
     collect_response_schema_refs(&route.body, route.module_id.clone(), out);
 }
@@ -474,7 +490,12 @@ fn collect_schema_type_refs(
     }
 }
 
-fn build_operation(route: &RouteDefinition, tag: &str, component_names: &HashSet<String>) -> Json {
+fn build_operation(
+    route: &RouteDefinition,
+    tag: &str,
+    component_names: &HashSet<String>,
+    resolved_defs: &HashMap<String, SchemaDefinition>,
+) -> Json {
     let mut parameters: Vec<Json> = Vec::new();
 
     // URL path parameters — extract from `:param` segments
@@ -489,20 +510,32 @@ fn build_operation(route: &RouteDefinition, tag: &str, component_names: &HashSet
         }
     }
 
-    // Query parameter binding
-    if has_query_binding(route) {
-        parameters.push(json!({
-            "name": "query",
-            "in": "query",
-            "required": false,
-            "style": "deepObject",
-            "explode": true,
-            "schema": {
-                "type": "object",
-                "additionalProperties": { "type": "string" }
-            },
-            "description": "All query string parameters bound as a Marreta map"
-        }));
+    // Query and header parameters (Spec 077). A schema-bound query/header emits one named, typed
+    // parameter per field; a raw bind (no schema) contributes no parameters (the endpoint reads
+    // arbitrary, undocumented input). The former generic `deepObject` query parameter is gone: it
+    // described `?query[term]=` while the runtime reads flat `?term=`.
+    for (kind, location) in [(TakeKind::Query, "query"), (TakeKind::Headers, "header")] {
+        if let Some(schema_name) = binding_schema(route, kind)
+            && let Some(schema_def) = resolved_defs.get(schema_name)
+        {
+            for field in &schema_def.fields {
+                let mut param = json!({
+                    "name": field.name,
+                    "in": location,
+                    "required": !field.optional,
+                    "schema": schema_type_to_openapi(&field.field_type),
+                });
+                // A repeated-key list serializes flat (`?k=a&k=b`), the OpenAPI `form`/`explode` form.
+                if matches!(
+                    field.field_type,
+                    crate::ast::SchemaType::TypedList(_) | crate::ast::SchemaType::ListType
+                ) {
+                    param["style"] = json!("form");
+                    param["explode"] = json!(true);
+                }
+                parameters.push(param);
+            }
+        }
     }
 
     // Build responses from the route body AST
@@ -538,8 +571,11 @@ fn build_operation(route: &RouteDefinition, tag: &str, component_names: &HashSet
             .entry("403".to_string())
             .or_insert_with(|| json!({ "description": "Forbidden" }));
     }
-    // Schema-bound routes always include 422 (payload validation)
-    if route.schema.is_some() && has_payload_binding(route) {
+    // Schema-bound routes always include 422 (payload/query/header validation)
+    if (has_payload_binding(route) && payload_schema(&route.take).is_some())
+        || binding_schema(route, TakeKind::Query).is_some()
+        || binding_schema(route, TakeKind::Headers).is_some()
+    {
         responses
             .entry("422".to_string())
             .or_insert_with(|| json!({ "description": "Unprocessable Entity" }));
@@ -688,9 +724,7 @@ fn free_form_json_object_schema() -> Json {
 
 fn build_request_body(route: &RouteDefinition, component_names: &HashSet<String>) -> Option<Json> {
     if has_payload_binding(route) {
-        let schema = route
-            .schema
-            .as_deref()
+        let schema = payload_schema(&route.take)
             .map(|name| schema_ref_or_fallback(name, component_names))
             .unwrap_or_else(free_form_json_object_schema);
         return Some(json!({
@@ -1072,32 +1106,24 @@ fn status_description(code: u16) -> &'static str {
 }
 
 fn has_payload_binding(route: &RouteDefinition) -> bool {
-    route
-        .take
-        .iter()
-        .any(|b| matches!(b, TakeBinding::Payload(_)))
+    route.take.iter().any(|b| b.kind == TakeKind::Payload)
 }
 
 fn has_raw_binding(route: &RouteDefinition) -> bool {
-    route.take.iter().any(|b| matches!(b, TakeBinding::Raw(_)))
+    route.take.iter().any(|b| b.kind == TakeKind::Raw)
 }
 
 fn has_form_binding(route: &RouteDefinition) -> bool {
-    route.take.iter().any(|b| matches!(b, TakeBinding::Form(_)))
-}
-
-fn has_query_binding(route: &RouteDefinition) -> bool {
-    route
-        .take
-        .iter()
-        .any(|b| matches!(b, TakeBinding::Query(_)))
+    route.take.iter().any(|b| b.kind == TakeKind::Form)
 }
 
 fn has_headers_binding(route: &RouteDefinition) -> bool {
-    route
-        .take
-        .iter()
-        .any(|b| matches!(b, TakeBinding::Headers(_)))
+    route.take.iter().any(|b| b.kind == TakeKind::Headers)
+}
+
+/// The schema bound to a given input kind, if the binding declares one (Spec 077).
+fn binding_schema(route: &RouteDefinition, kind: TakeKind) -> Option<&str> {
+    crate::ast::binding_for(&route.take, kind).and_then(|b| b.schema.as_deref())
 }
 
 /// Converts a file stem (`schema_test`) to a human-readable tag (`Schema Test`).
@@ -1187,7 +1213,7 @@ mod tests {
     use super::*;
     use crate::ast::{
         AuthProviderConfig, AuthProviderField, Expression, HttpVerb, ReplyContentType, RouteAuth,
-        SchemaField, SchemaType, Statement, TakeBinding,
+        SchemaField, SchemaType, Statement, TakeBinding, TakeKind,
     };
     use crate::environment::Environment;
     use crate::file_loader::{ModuleRuntime, ProjectRuntime};
@@ -1242,7 +1268,6 @@ mod tests {
             auth: None,
             allow: vec![],
             take: vec![],
-            schema: None,
             body: vec![],
             line: 1,
             column: 1,
@@ -1262,7 +1287,6 @@ mod tests {
             auth: None,
             allow: vec![],
             take: vec![],
-            schema: None,
             body: vec![],
             line: 1,
             column: 1,
@@ -1412,8 +1436,11 @@ mod tests {
             path: "/users".into(),
             auth: None,
             allow: vec![],
-            take: vec![TakeBinding::Payload("payload".into())],
-            schema: Some("user_payload".into()),
+            take: vec![TakeBinding {
+                kind: TakeKind::Payload,
+                name: "payload".into(),
+                schema: Some("user_payload".into()),
+            }],
             body: vec![],
             line: 1,
             column: 1,
@@ -1434,8 +1461,11 @@ mod tests {
             path: "/raw".into(),
             auth: None,
             allow: vec![],
-            take: vec![TakeBinding::Raw("raw".into())],
-            schema: None,
+            take: vec![TakeBinding {
+                kind: TakeKind::Raw,
+                name: "raw".into(),
+                schema: None,
+            }],
             body: vec![],
             line: 1,
             column: 1,
@@ -1457,8 +1487,11 @@ mod tests {
             path: "/private".into(),
             auth: None,
             allow: vec![],
-            take: vec![TakeBinding::Payload("payload".into())],
-            schema: Some("PrivatePayload".into()),
+            take: vec![TakeBinding {
+                kind: TakeKind::Payload,
+                name: "payload".into(),
+                schema: Some("PrivatePayload".into()),
+            }],
             body: vec![],
             line: 1,
             column: 1,
@@ -1576,7 +1609,6 @@ mod tests {
             }),
             allow: vec![],
             take: vec![],
-            schema: None,
             body: vec![],
             line: 1,
             column: 1,
@@ -1600,7 +1632,6 @@ mod tests {
             auth: None,
             allow: vec![Expression::Boolean(true)],
             take: vec![],
-            schema: None,
             body: vec![reply_stmt(200, None)],
             line: 1,
             column: 1,
@@ -1634,7 +1665,6 @@ mod tests {
             auth: None,
             allow: vec![],
             take: vec![],
-            schema: None,
             body: vec![],
             line: 1,
             column: 1,
@@ -1653,8 +1683,11 @@ mod tests {
             path: "/echo".into(),
             auth: None,
             allow: vec![],
-            take: vec![TakeBinding::Payload("payload".into())],
-            schema: None,
+            take: vec![TakeBinding {
+                kind: TakeKind::Payload,
+                name: "payload".into(),
+                schema: None,
+            }],
             body: vec![],
             line: 1,
             column: 1,
@@ -1691,7 +1724,6 @@ mod tests {
                 auth: None,
                 allow: vec![],
                 take: vec![],
-                schema: None,
                 body: vec![],
                 line: 1,
                 column: 1,
@@ -1788,7 +1820,6 @@ mod tests {
             auth: None,
             allow: vec![],
             take: vec![],
-            schema: None,
             body: vec![reply_stmt(200, None)],
             line: 1,
             column: 1,
@@ -1816,7 +1847,6 @@ mod tests {
             auth: None,
             allow: vec![],
             take: vec![],
-            schema: None,
             body: vec![reply_stmt(201, Some("order_result"))],
             line: 1,
             column: 1,
@@ -1838,7 +1868,6 @@ mod tests {
             auth: None,
             allow: vec![],
             take: vec![],
-            schema: None,
             body: vec![reply_stmt(200, None), fail_stmt(404)],
             line: 1,
             column: 1,
@@ -1865,8 +1894,11 @@ mod tests {
             path: "/orders".into(),
             auth: None,
             allow: vec![],
-            take: vec![TakeBinding::Payload("p".into())],
-            schema: Some("order_payload".into()),
+            take: vec![TakeBinding {
+                kind: TakeKind::Payload,
+                name: "p".into(),
+                schema: Some("order_payload".into()),
+            }],
             body: vec![reply_stmt(201, None)],
             line: 1,
             column: 1,
@@ -1886,7 +1918,6 @@ mod tests {
             auth: None,
             allow: vec![],
             take: vec![],
-            schema: None,
             body: vec![],
             line: 1,
             column: 1,
@@ -1918,15 +1949,20 @@ mod tests {
     }
 
     #[test]
-    fn test_query_binding_shows_query_parameter() {
+    fn test_raw_query_binding_emits_no_query_parameter() {
+        // Spec 077: a raw `take query` (no schema) contributes no query parameters; the endpoint
+        // reads arbitrary, undocumented input. (The former generic `deepObject` param is gone.)
         let mut registry = empty_registry();
         registry.routes.push(RouteDefinition {
             verb: HttpVerb::Get,
             path: "/search".into(),
             auth: None,
             allow: vec![],
-            take: vec![TakeBinding::Query("q".into())],
-            schema: None,
+            take: vec![TakeBinding {
+                kind: TakeKind::Query,
+                name: "q".into(),
+                schema: None,
+            }],
             body: vec![],
             line: 1,
             column: 1,
@@ -1935,16 +1971,72 @@ mod tests {
         });
         let spec = parse_spec(&registry);
         let params = &spec["paths"]["/search"]["get"]["parameters"];
-        assert!(params.is_array());
-        let query_param = params
+        let has_query = params
             .as_array()
-            .unwrap()
-            .iter()
-            .find(|p| p["in"] == "query");
-        assert!(query_param.is_some());
-        let query_param = query_param.unwrap();
-        assert_eq!(query_param["style"], "deepObject");
-        assert_eq!(query_param["explode"], true);
+            .map(|a| a.iter().any(|p| p["in"] == "query"))
+            .unwrap_or(false);
+        assert!(!has_query, "raw query bind must not emit query parameters");
+    }
+
+    #[test]
+    fn test_schema_bound_query_emits_named_parameters() {
+        // Spec 077: a schema-bound query emits one named, typed parameter per field, flat.
+        let mut registry = empty_registry();
+        registry.schemas.insert(
+            "SearchQuery".into(),
+            SchemaDefinition {
+                db_table: None,
+                fields: vec![
+                    SchemaField {
+                        name: "term".into(),
+                        field_type: SchemaType::StringType,
+                        optional: false,
+                    },
+                    SchemaField {
+                        name: "limit".into(),
+                        field_type: SchemaType::IntegerType,
+                        optional: true,
+                    },
+                    SchemaField {
+                        name: "tags".into(),
+                        field_type: SchemaType::TypedList(Box::new(SchemaType::StringType)),
+                        optional: true,
+                    },
+                ],
+            },
+        );
+        registry.routes.push(RouteDefinition {
+            verb: HttpVerb::Get,
+            path: "/search".into(),
+            auth: None,
+            allow: vec![],
+            take: vec![TakeBinding {
+                kind: TakeKind::Query,
+                name: "q".into(),
+                schema: Some("SearchQuery".into()),
+            }],
+            body: vec![],
+            line: 1,
+            column: 1,
+            source_file: None,
+            module_id: None,
+        });
+        let spec = parse_spec(&registry);
+        let params = spec["paths"]["/search"]["get"]["parameters"]
+            .as_array()
+            .expect("parameters array")
+            .clone();
+        let term = params.iter().find(|p| p["name"] == "term").expect("term");
+        assert_eq!(term["in"], "query");
+        assert_eq!(term["required"], true);
+        assert_eq!(term["schema"]["type"], "string");
+        let limit = params.iter().find(|p| p["name"] == "limit").expect("limit");
+        assert_eq!(limit["required"], false);
+        assert_eq!(limit["schema"]["type"], "integer");
+        let tags = params.iter().find(|p| p["name"] == "tags").expect("tags");
+        assert_eq!(tags["schema"]["type"], "array");
+        assert_eq!(tags["style"], "form");
+        assert_eq!(tags["explode"], true);
     }
 
     #[test]
@@ -1955,8 +2047,11 @@ mod tests {
             path: "/headers".into(),
             auth: None,
             allow: vec![],
-            take: vec![TakeBinding::Headers("headers".into())],
-            schema: None,
+            take: vec![TakeBinding {
+                kind: TakeKind::Headers,
+                name: "headers".into(),
+                schema: None,
+            }],
             body: vec![reply_stmt(200, None)],
             line: 1,
             column: 1,
@@ -1980,7 +2075,6 @@ mod tests {
             auth: None,
             allow: vec![],
             take: vec![],
-            schema: None,
             body: vec![Statement::Reply {
                 status_code: Expression::Identifier("status_code".into()),
                 content_type: ReplyContentType::Json,
@@ -2013,7 +2107,6 @@ mod tests {
             auth: None,
             allow: vec![],
             take: vec![],
-            schema: None,
             body: vec![Statement::Raise {
                 message: Expression::StringLiteral("boom".into()),
                 condition: None,
@@ -2039,7 +2132,6 @@ mod tests {
             auth: None,
             allow: vec![],
             take: vec![],
-            schema: None,
             body: vec![Statement::Assignment {
                 target: "result".into(),
                 value: Expression::Pipeline {
@@ -2076,7 +2168,6 @@ mod tests {
             auth: None,
             allow: vec![],
             take: vec![],
-            schema: None,
             body: vec![Statement::Reply {
                 status_code: Expression::Integer(200),
                 content_type: ReplyContentType::Json,
@@ -2108,7 +2199,6 @@ mod tests {
             auth: None,
             allow: vec![],
             take: vec![],
-            schema: None,
             body: vec![require_stmt(401), reply_stmt(200, None)],
             line: 1,
             column: 1,
@@ -2129,7 +2219,6 @@ mod tests {
             auth: None,
             allow: vec![],
             take: vec![],
-            schema: None,
             body: vec![reject_stmt(403), reply_stmt(200, None)],
             line: 1,
             column: 1,
@@ -2149,7 +2238,6 @@ mod tests {
             auth: None,
             allow: vec![],
             take: vec![],
-            schema: None,
             body: vec![Statement::Export(Box::new(reply_stmt(201, None)))],
             line: 1,
             column: 1,
@@ -2211,7 +2299,6 @@ mod tests {
             auth: None,
             allow: vec![],
             take: vec![],
-            schema: None,
             body: vec![],
             line: 1,
             column: 1,
@@ -2232,7 +2319,6 @@ mod tests {
             auth: None,
             allow: vec![],
             take: vec![],
-            schema: None,
             body: vec![],
             line: 1,
             column: 1,
@@ -2256,7 +2342,6 @@ mod tests {
             auth: None,
             allow: vec![],
             take: vec![],
-            schema: None,
             body: vec![reply_stmt(200, None), reply_stmt(200, None)],
             line: 1,
             column: 1,

@@ -10,10 +10,12 @@ use std::collections::HashMap;
 use chrono::{DateTime, Duration as ChronoDuration, NaiveDate, NaiveTime, Utc};
 use rust_decimal::Decimal;
 
+use std::sync::{Arc, RwLock};
+
 use crate::ast::SchemaType;
 use crate::error::MarretaError;
 use crate::route_loader::SchemaDefinition;
-use crate::value::{TemporalInterval, TemporalValue, Value};
+use crate::value::{TemporalInterval, TemporalValue, Value, ValueMap};
 
 /// Maximum recursion depth — guards against circular schemas that slip past
 /// the startup cycle detection.
@@ -427,6 +429,164 @@ fn error_422(msg: &str) -> MarretaError {
     }
 }
 
+// ── Spec 077: query/header input schemas ────────────────────────────────────────────────────────
+
+/// Canonical form of a header/field name so a schema field matches a header case-insensitively with
+/// `_` and `-` treated as equivalent: `request_id` and `X-Request-Id` both canonicalize to
+/// `request_id`.
+fn canonical_header_key(name: &str) -> String {
+    name.to_ascii_lowercase().replace('-', "_")
+}
+
+/// Coerce one raw text value into a declared scalar type. A value that cannot be coerced is a 422.
+/// Reuses the existing scalar coercers (decimal/temporal/enum) by wrapping the text as a string.
+fn coerce_scalar_string(s: &str, ty: &SchemaType, path: &str) -> Result<Value, MarretaError> {
+    match ty {
+        SchemaType::StringType => Ok(Value::String(s.to_string())),
+        SchemaType::IntegerType => s
+            .parse::<i64>()
+            .map(Value::Integer)
+            .map_err(|_| error_422(&format!("field '{}' must be an integer, got '{}'", path, s))),
+        SchemaType::FloatType => s
+            .parse::<f64>()
+            .map(Value::Float)
+            .map_err(|_| error_422(&format!("field '{}' must be a number, got '{}'", path, s))),
+        SchemaType::BooleanType => match s {
+            "true" => Ok(Value::Boolean(true)),
+            "false" => Ok(Value::Boolean(false)),
+            _ => Err(error_422(&format!(
+                "field '{}' must be true or false, got '{}'",
+                path, s
+            ))),
+        },
+        SchemaType::DecimalType => coerce_decimal(&Value::String(s.to_string()), path),
+        SchemaType::InstantType => coerce_instant(&Value::String(s.to_string()), path),
+        SchemaType::DateType => coerce_date(&Value::String(s.to_string()), path),
+        SchemaType::TimeType => coerce_time(&Value::String(s.to_string()), path),
+        SchemaType::DurationType => coerce_duration(&Value::String(s.to_string()), path),
+        SchemaType::IntervalType => coerce_interval(&Value::String(s.to_string()), path),
+        SchemaType::EnumType(values) => coerce_enum(&Value::String(s.to_string()), values, path),
+        // Non-scalar types are rejected at load by the flat-only check; this is defensive.
+        SchemaType::Reference(_)
+        | SchemaType::TypedList(_)
+        | SchemaType::ListType
+        | SchemaType::MapType => Err(error_422(&format!(
+            "field '{}' has a type that cannot be read from query or headers",
+            path
+        ))),
+    }
+}
+
+/// Validate and coerce a flat text-input map (query string or headers) against `schema`. Inputs
+/// arrive as text, each name carrying all its raw values (query/headers may repeat). Empty values
+/// are treated as absent. Only declared fields are bound; a missing required field is a 422. When
+/// `header_names` is set, field names match input keys by the case-insensitive `_`/`-` convention.
+pub fn coerce_scalar_input(
+    inputs: &HashMap<String, Vec<String>>,
+    schema: &SchemaDefinition,
+    header_names: bool,
+) -> Result<Value, MarretaError> {
+    let normalized: HashMap<String, &Vec<String>> = if header_names {
+        inputs
+            .iter()
+            .map(|(k, v)| (canonical_header_key(k), v))
+            .collect()
+    } else {
+        inputs.iter().map(|(k, v)| (k.clone(), v)).collect()
+    };
+    let lookup = |name: &str| -> Option<&Vec<String>> {
+        if header_names {
+            normalized.get(&canonical_header_key(name)).copied()
+        } else {
+            normalized.get(name).copied()
+        }
+    };
+
+    let mut out = ValueMap::new();
+    for field in &schema.fields {
+        // Empty values are treated as absent (Spec 077).
+        let present: Vec<&String> = lookup(&field.name)
+            .map(|vals| vals.iter().filter(|s| !s.is_empty()).collect())
+            .unwrap_or_default();
+
+        match &field.field_type {
+            SchemaType::TypedList(inner) => {
+                if present.is_empty() {
+                    if !field.optional {
+                        return Err(error_422(&format!("field '{}' is required", field.name)));
+                    }
+                    continue;
+                }
+                let mut items = Vec::with_capacity(present.len());
+                for s in &present {
+                    items.push(coerce_scalar_string(s, inner, &field.name)?);
+                }
+                out.insert(field.name.clone(), Value::List(items));
+            }
+            SchemaType::ListType => {
+                if present.is_empty() {
+                    if !field.optional {
+                        return Err(error_422(&format!("field '{}' is required", field.name)));
+                    }
+                    continue;
+                }
+                let items = present
+                    .iter()
+                    .map(|s| Value::String((*s).clone()))
+                    .collect();
+                out.insert(field.name.clone(), Value::List(items));
+            }
+            scalar => match present.first() {
+                None => {
+                    if !field.optional {
+                        return Err(error_422(&format!("field '{}' is required", field.name)));
+                    }
+                }
+                Some(s) => {
+                    out.insert(
+                        field.name.clone(),
+                        coerce_scalar_string(s, scalar, &field.name)?,
+                    );
+                }
+            },
+        }
+    }
+    Ok(Value::Map(Arc::new(RwLock::new(out))))
+}
+
+/// Whether a schema is flat enough to bind to query/headers (Spec 077): only scalar fields and
+/// `list of <scalar>` (and the untyped `list`). A nested object (schema reference), a
+/// `list of <Schema>`, or a `map` is not flat. Returns the first offending field name. Used at load
+/// (the binding-site error) and by the lint.
+pub fn first_non_flat_field(schema: &SchemaDefinition) -> Option<&str> {
+    fn is_scalar(ty: &SchemaType) -> bool {
+        matches!(
+            ty,
+            SchemaType::StringType
+                | SchemaType::IntegerType
+                | SchemaType::FloatType
+                | SchemaType::DecimalType
+                | SchemaType::BooleanType
+                | SchemaType::InstantType
+                | SchemaType::DateType
+                | SchemaType::TimeType
+                | SchemaType::DurationType
+                | SchemaType::IntervalType
+                | SchemaType::EnumType(_)
+        )
+    }
+    schema
+        .fields
+        .iter()
+        .find(|field| match &field.field_type {
+            SchemaType::ListType => false,
+            t if is_scalar(t) => false,
+            SchemaType::TypedList(inner) => !is_scalar(inner),
+            _ => true, // Reference, MapType, nested
+        })
+        .map(|field| field.name.as_str())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -458,6 +618,139 @@ mod tests {
 
     fn no_schemas() -> HashMap<String, SchemaDefinition> {
         HashMap::new()
+    }
+
+    // --- Spec 077: query/header input coercion + flat check ---
+
+    fn inputs(pairs: Vec<(&str, Vec<&str>)>) -> HashMap<String, Vec<String>> {
+        pairs
+            .into_iter()
+            .map(|(k, vs)| (k.to_string(), vs.into_iter().map(String::from).collect()))
+            .collect()
+    }
+
+    fn get_field(v: &Value, name: &str) -> Option<Value> {
+        if let Value::Map(m) = v {
+            m.read().unwrap().get(name).cloned()
+        } else {
+            None
+        }
+    }
+
+    #[test]
+    fn test_query_coerces_scalars() {
+        let s = schema(vec![
+            field("term", SchemaType::StringType, false),
+            field("limit", SchemaType::IntegerType, true),
+            field("active", SchemaType::BooleanType, true),
+        ]);
+        let v = coerce_scalar_input(
+            &inputs(vec![
+                ("term", vec!["hi"]),
+                ("limit", vec!["20"]),
+                ("active", vec!["true"]),
+            ]),
+            &s,
+            false,
+        )
+        .unwrap();
+        assert_eq!(get_field(&v, "term"), Some(Value::String("hi".into())));
+        assert_eq!(get_field(&v, "limit"), Some(Value::Integer(20)));
+        assert_eq!(get_field(&v, "active"), Some(Value::Boolean(true)));
+    }
+
+    #[test]
+    fn test_query_bad_integer_is_422() {
+        let s = schema(vec![field("limit", SchemaType::IntegerType, false)]);
+        assert!(coerce_scalar_input(&inputs(vec![("limit", vec!["abc"])]), &s, false).is_err());
+    }
+
+    #[test]
+    fn test_query_boolean_only_true_false() {
+        let s = schema(vec![field("active", SchemaType::BooleanType, false)]);
+        assert!(coerce_scalar_input(&inputs(vec![("active", vec!["1"])]), &s, false).is_err());
+        assert!(coerce_scalar_input(&inputs(vec![("active", vec!["true"])]), &s, false).is_ok());
+    }
+
+    #[test]
+    fn test_query_required_missing_is_422() {
+        let s = schema(vec![field("term", SchemaType::StringType, false)]);
+        assert!(coerce_scalar_input(&inputs(vec![]), &s, false).is_err());
+    }
+
+    #[test]
+    fn test_query_empty_value_is_absent() {
+        // Optional + empty -> absent (not bound).
+        let s = schema(vec![field("term", SchemaType::StringType, true)]);
+        let v = coerce_scalar_input(&inputs(vec![("term", vec![""])]), &s, false).unwrap();
+        assert_eq!(get_field(&v, "term"), None);
+        // Required + empty -> 422 (empty is absent).
+        let s2 = schema(vec![field("term", SchemaType::StringType, false)]);
+        assert!(coerce_scalar_input(&inputs(vec![("term", vec![""])]), &s2, false).is_err());
+    }
+
+    #[test]
+    fn test_query_list_from_repeated_key() {
+        let s = schema(vec![field(
+            "tags",
+            SchemaType::TypedList(Box::new(SchemaType::StringType)),
+            true,
+        )]);
+        let v = coerce_scalar_input(&inputs(vec![("tags", vec!["a", "b"])]), &s, false).unwrap();
+        assert_eq!(
+            get_field(&v, "tags"),
+            Some(Value::List(vec![
+                Value::String("a".into()),
+                Value::String("b".into()),
+            ]))
+        );
+    }
+
+    #[test]
+    fn test_header_name_mapping_convention() {
+        // Convention: case-insensitive, `_` matches `-`. So `x_request_id` matches `X-Request-Id`,
+        // and `request_id` matches `Request-Id`.
+        let s = schema(vec![field("x_request_id", SchemaType::StringType, false)]);
+        let v =
+            coerce_scalar_input(&inputs(vec![("X-Request-Id", vec!["abc"])]), &s, true).unwrap();
+        assert_eq!(
+            get_field(&v, "x_request_id"),
+            Some(Value::String("abc".into()))
+        );
+
+        let s2 = schema(vec![field("request_id", SchemaType::StringType, false)]);
+        let v2 = coerce_scalar_input(&inputs(vec![("Request-Id", vec!["z"])]), &s2, true).unwrap();
+        assert_eq!(
+            get_field(&v2, "request_id"),
+            Some(Value::String("z".into()))
+        );
+    }
+
+    #[test]
+    fn test_first_non_flat_field() {
+        let flat = schema(vec![
+            field("a", SchemaType::StringType, false),
+            field(
+                "b",
+                SchemaType::TypedList(Box::new(SchemaType::IntegerType)),
+                true,
+            ),
+        ]);
+        assert_eq!(first_non_flat_field(&flat), None);
+
+        let nested = schema(vec![field(
+            "addr",
+            SchemaType::Reference("Address".into()),
+            false,
+        )]);
+        assert_eq!(first_non_flat_field(&nested), Some("addr"));
+
+        let list_of_schema = schema(vec![field(
+            "items",
+            SchemaType::TypedList(Box::new(SchemaType::Reference("Item".into()))),
+            false,
+        )]);
+        assert_eq!(first_non_flat_field(&list_of_schema), Some("items"));
     }
 
     // --- Existing flat validation tests (unchanged behaviour) ---

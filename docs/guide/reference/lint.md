@@ -88,6 +88,14 @@ Use a literal for the identifier. An interpolated `order_by("created_at #{params
 for the same reason. This lint warns, it does not sanitize: the runtime guard is a separate hardening
 follow-up. The check applies to the relational provider only, not to `doc` pipelines.
 
+### non_flat_input_schema
+
+A schema bound to query or headers (`take query as Schema` / `take headers as Schema`) is not flat.
+Query and header parameters are flat on the wire, so a schema bound there may only use scalar fields
+and lists of scalars. A field that references another schema (a nested object), or a list of objects
+(`list of SomeSchema`), is flagged. Keep query and header schemas flat, or use the raw `take query` /
+`take headers` for arbitrary input. This is also a load-time error; the lint surfaces it at dev time.
+
 ## Unused declarations
 
 ### unused_variable

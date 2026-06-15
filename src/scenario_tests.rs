@@ -475,6 +475,9 @@ async fn execute_scenario(
 
     let (verb, raw_path, body_expr, headers_expr) = when;
     let (path, query_params) = split_path_and_query(raw_path);
+    // Spec 077: keep the raw query string (repeated keys preserved) so a `list of <scalar>` query
+    // field coerces the same way in scenarios as it does on the live server.
+    let raw_query = raw_path.split_once('?').map(|(_, q)| q.to_string());
     let (route, path_params) = find_route(&registry.routes, verb, &path)
         .ok_or_else(|| format!("route not found: {} {}", verb, path))?;
 
@@ -503,6 +506,7 @@ async fn execute_scenario(
         route.clone(),
         path_params,
         query_params,
+        raw_query,
         headers,
         trace_context,
         body,

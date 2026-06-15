@@ -1,0 +1,42 @@
+# Spec 077: query and header input schemas — exhaustive variation coverage.
+
+# Typed query: every scalar type (incl. decimal + instant) + a list, echoed with a coercion proof
+# (arithmetic on limit only works if it is a real integer).
+route GET "/qh/query" take query as QHSearch
+    reply 200, {
+        term: query.term,
+        limit: query.limit or 0,
+        ratio: query.ratio or 0.0,
+        active: query.active or false,
+        tier: query.tier or "none",
+        price: query.price or 0,
+        since: query.since or "none",
+        tags: query.tags or [],
+        limit_plus_one: (query.limit or 0) + 1
+    }
+
+# Typed headers: name mapping by the _/- convention.
+route GET "/qh/headers" take headers as QHHeaders
+    reply 200, { rid: headers.x_request_id or "none", lang: headers.accept_lang or "none" }
+
+# Required header field: missing -> 422.
+route GET "/qh/reqheader" take headers as QHReqHeaders
+    reply 200, { key: headers.x_api_key }
+
+# All three inputs typed at once (query + payload + headers), inline.
+route POST "/qh/all" take query as QHSearch, payload as QHBody, headers as QHHeaders
+    reply 200, { term: query.term, body: payload.value, rid: headers.x_request_id or "none" }
+
+# Inline multiple bindings, mixed typed + raw (one take, comma-separated).
+route POST "/qh/inline" take query as QHSearch, payload
+    reply 200, { term: query.term, body: payload.value }
+
+# Multi-line take (N take lines, before any logic), mixed typed + raw.
+route GET "/qh/multiline"
+    take query as QHSearch
+    take headers as QHHeaders
+    reply 200, { term: query.term, rid: headers.x_request_id or "none" }
+
+# Raw query (no schema) still yields a string map, unchanged.
+route GET "/qh/raw" take query
+    reply 200, { term: query.term or "none", raw_limit: query.limit or "none" }

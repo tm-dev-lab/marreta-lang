@@ -8,7 +8,7 @@ use serde_json::json;
 
 use crate::ast::{
     Argument, Expression, MapStatement, MatchPattern, PipelineStage, RescueHandler, ScenarioStep,
-    SchemaType, Statement, TakeBinding, TaskBody,
+    SchemaField, SchemaType, Statement, TakeBinding, TakeKind, TaskBody,
 };
 use crate::error::MarretaError;
 use crate::feature_flags::is_valid_feature_name;
@@ -134,6 +134,11 @@ const CATALOG: &[LintRule] = &[
         code: "non_literal_sql_identifier",
         default_severity: LintSeverity::Warning,
         summary: "A db order_by clause, select alias, or like/in field is built from a runtime value rather than a literal, which is a SQL injection vector.",
+    },
+    LintRule {
+        code: "non_flat_input_schema",
+        default_severity: LintSeverity::Error,
+        summary: "A schema bound to query or headers (`take query as` / `take headers as`) is not flat: it has a nested object (schema reference) or a list of objects, which query and header parameters cannot carry.",
     },
     LintRule {
         code: "unused_schema",
@@ -344,6 +349,7 @@ fn lint_inputs(inputs: Vec<LintInput>) -> LintReport {
     }
 
     let schema_names = collect_schema_names(&parsed);
+    let schema_fields = collect_schema_fields(&parsed);
     let task_defs = collect_private_task_defs(&parsed);
     let task_calls = collect_task_calls(&parsed);
 
@@ -356,6 +362,7 @@ fn lint_inputs(inputs: Vec<LintInput>) -> LintReport {
         lint_route_without_response(&file.path, &file.program, &mut diagnostics);
         lint_match_without_fallback(&file.path, &file.program, &mut diagnostics);
         lint_non_literal_sql_identifier(&file.path, &file.program, &mut diagnostics);
+        lint_non_flat_input_schema(&file.path, &file.program, &schema_fields, &mut diagnostics);
     }
 
     for (name, path, line, column) in task_defs {
@@ -601,6 +608,86 @@ fn collect_schema_names_from_statements(statements: &[Statement], names: &mut Ha
                 collect_schema_names_from_statements(std::slice::from_ref(inner.as_ref()), names)
             }
             _ => {}
+        }
+    }
+}
+
+/// Spec 077: collect every schema's fields (across files) so the flat-input lint can resolve a
+/// schema bound to query/headers and check it for nested objects.
+fn collect_schema_fields(files: &[ParsedFile]) -> HashMap<String, Vec<SchemaField>> {
+    let mut defs = HashMap::new();
+    for file in files {
+        collect_schema_fields_from_statements(&file.program, &mut defs);
+    }
+    defs
+}
+
+fn collect_schema_fields_from_statements(
+    statements: &[Statement],
+    defs: &mut HashMap<String, Vec<SchemaField>>,
+) {
+    for stmt in statements {
+        match stmt {
+            Statement::Schema { name, fields, .. } => {
+                defs.insert(name.clone(), fields.clone());
+            }
+            Statement::Export(inner) => {
+                collect_schema_fields_from_statements(std::slice::from_ref(inner.as_ref()), defs)
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Spec 077: flag a schema bound to query or headers that is not flat (a nested object / schema
+/// reference, or a list of objects). This is also a load-time error; the lint surfaces it at dev
+/// time (and in the editor) before the project is run.
+fn lint_non_flat_input_schema(
+    path: &Path,
+    statements: &[Statement],
+    schema_fields: &HashMap<String, Vec<SchemaField>>,
+    diagnostics: &mut Vec<LintDiagnostic>,
+) {
+    for stmt in statements {
+        if let Statement::Route {
+            take, line, column, ..
+        } = stmt
+        {
+            for binding in take {
+                if !matches!(binding.kind, TakeKind::Query | TakeKind::Headers) {
+                    continue;
+                }
+                let Some(schema_name) = &binding.schema else {
+                    continue;
+                };
+                let Some(fields) = schema_fields.get(schema_name) else {
+                    continue; // unknown schema is a separate rule
+                };
+                let def = crate::route_loader::SchemaDefinition {
+                    db_table: None,
+                    fields: fields.clone(),
+                };
+                if let Some(field) = crate::validator::first_non_flat_field(&def) {
+                    let location = if binding.kind == TakeKind::Query {
+                        "query"
+                    } else {
+                        "headers"
+                    };
+                    diagnostics.push(LintDiagnostic::new(
+                        path.to_path_buf(),
+                        *line,
+                        *column,
+                        rule("non_flat_input_schema").unwrap().default_severity,
+                        "non_flat_input_schema",
+                        format!(
+                            "schema '{schema_name}' bound to {location} is not flat: field '{field}' is a nested object or list of objects; {location} parameters cannot carry nested objects"
+                        ),
+                        Some(format!(
+                            "Use only scalar fields and lists of scalars in a schema bound to {location}."
+                        )),
+                    ));
+                }
+            }
         }
     }
 }
@@ -1082,10 +1169,6 @@ fn extract_statement_field_schema_refs(stmt: &Statement, refs: &mut HashSet<Stri
             response_schema: Some(schema),
             ..
         }
-        | Statement::Route {
-            schema: Some(schema),
-            ..
-        }
         | Statement::OnQueue {
             schema: Some(schema),
             ..
@@ -1095,6 +1178,14 @@ fn extract_statement_field_schema_refs(stmt: &Statement, refs: &mut HashSet<Stri
             ..
         } => {
             refs.insert(schema.clone());
+        }
+        // Spec 077: route schemas live on each `take` binding (`take query as Q`, payload, ...).
+        Statement::Route { take, .. } => {
+            for binding in take {
+                if let Some(schema) = &binding.schema {
+                    refs.insert(schema.clone());
+                }
+            }
         }
         Statement::TaskDef { params, .. } => {
             for param in params {
@@ -1273,13 +1364,7 @@ fn route_injected_bindings(has_auth: bool, take: &[TakeBinding]) -> HashSet<Stri
 }
 
 fn take_binding_name(binding: &TakeBinding) -> &str {
-    match binding {
-        TakeBinding::Payload(n)
-        | TakeBinding::Query(n)
-        | TakeBinding::Headers(n)
-        | TakeBinding::Form(n)
-        | TakeBinding::Raw(n) => n,
-    }
+    &binding.name
 }
 
 /// Spec 071: flags a local that shadows a runtime-injected binding (`params`, `query`, `headers`,
@@ -1924,13 +2009,13 @@ fn lint_schema_references_in_statement(
             }
         }
         Statement::Route {
-            schema,
-            line,
-            column,
-            ..
+            take, line, column, ..
         } => {
-            if let Some(schema) = schema {
-                push_unknown_schema(path, *line, *column, schema, schema_names, diagnostics);
+            // Spec 077: each `take` binding may carry a schema (`take query as Q`, payload, ...).
+            for binding in take {
+                if let Some(schema) = &binding.schema {
+                    push_unknown_schema(path, *line, *column, schema, schema_names, diagnostics);
+                }
             }
         }
         Statement::Reply {
@@ -2564,6 +2649,30 @@ mod tests {
 
     fn lint_source(source: &str) -> LintReport {
         lint_stdin(PathBuf::from("test.marreta"), source.to_string())
+    }
+
+    #[test]
+    fn non_flat_query_schema_is_flagged() {
+        let src = "schema Addr\n    city: string\n\nschema BadQuery\n    addr: Addr\n\nroute GET \"/x\" take query as BadQuery\n    reply 200, { ok: true }\n";
+        let report = lint_source(src);
+        assert!(
+            report
+                .diagnostics
+                .iter()
+                .any(|d| d.code == "non_flat_input_schema")
+        );
+    }
+
+    #[test]
+    fn flat_query_schema_is_not_flagged() {
+        let src = "schema GoodQuery\n    term: string\n    tags?: list of string\n\nroute GET \"/x\" take query as GoodQuery\n    reply 200, { ok: true }\n";
+        let report = lint_source(src);
+        assert!(
+            !report
+                .diagnostics
+                .iter()
+                .any(|d| d.code == "non_flat_input_schema")
+        );
     }
 
     fn lint_multi(files: &[(&str, &str)]) -> LintReport {

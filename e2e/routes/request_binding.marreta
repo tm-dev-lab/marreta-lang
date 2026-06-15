@@ -20,3 +20,38 @@ route POST "/binding/raw" take raw
 # JSON body (untyped payload)
 route POST "/binding/json" take payload
     reply 200, { echoed: payload.value }
+
+# Spec 077: typed query — deterministic scalar types + list, with an integer-coercion proof.
+# (float/decimal/instant coercion is asserted in functional_tests with tolerant jq.)
+route GET "/binding/query_typed" take query as SearchQuery
+    reply 200, {
+        term: query.term,
+        limit: query.limit or 0,
+        active: query.active or false,
+        tier: query.tier or "none",
+        tags: query.tags or [],
+        limit_plus_one: (query.limit or 0) + 1
+    }
+
+# Spec 077: typed headers — X-Request-Id maps to x_request_id by the _/- convention
+route GET "/binding/headers_typed" take headers as ApiHeaders
+    reply 200, { rid: headers.x_request_id or "none", lang: headers.accept_lang or "none" }
+
+# Spec 077: required header field — missing returns 422
+route GET "/binding/req_header" take headers as ReqHeaders
+    reply 200, { key: headers.x_api_key }
+
+# Spec 077: all three inputs typed at once (query + payload + headers)
+route POST "/binding/all_typed" take query as SearchQuery, payload as NewUser, headers as ApiHeaders
+    reply 200, { term: query.term, user: payload.name, rid: headers.x_request_id or "none" }
+
+# Spec 077: inline — three bindings in one take, mixed typed + raw (query typed, payload raw, headers typed)
+route POST "/binding/inline_mixed" take query as SearchQuery, payload, headers as ApiHeaders
+    reply 200, { term: query.term, body: payload.value, rid: headers.x_request_id or "none" }
+
+# Spec 077: multiline — N take lines, mixed typed + raw (query typed, payload raw, headers raw)
+route POST "/binding/multi_mixed"
+    take query as SearchQuery
+    take payload
+    take headers
+    reply 200, { term: query.term, body: payload.value, accept: headers.accept or "none" }

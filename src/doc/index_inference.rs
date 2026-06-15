@@ -497,7 +497,6 @@ mod tests {
             auth: None,
             allow: vec![],
             take: vec![],
-            schema: None,
             body: vec![Statement::Assignment {
                 target: "rows".into(),
                 value: pipeline,

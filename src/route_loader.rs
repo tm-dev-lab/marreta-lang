@@ -15,9 +15,9 @@ pub struct RouteDefinition {
     pub path: String,
     pub auth: Option<RouteAuth>,
     pub allow: Vec<Expression>,
+    /// Request bindings; a `take payload as Schema` carries the payload schema on the binding
+    /// itself (Spec 077). Use `ast::payload_schema(&take)` to resolve the request-body schema.
     pub take: Vec<TakeBinding>,
-    /// Schema name bound via `as SchemaName`, if any.
-    pub schema: Option<String>,
     pub body: Vec<Statement>,
     pub line: usize,
     pub column: usize,
@@ -153,7 +153,6 @@ pub fn load(
                 auth,
                 allow,
                 take,
-                schema,
                 body,
                 line,
                 column,
@@ -183,7 +182,6 @@ pub fn load(
                     auth,
                     allow,
                     take,
-                    schema,
                     body,
                     line,
                     column,
@@ -534,7 +532,7 @@ mod tests {
     use super::*;
     use crate::ast::{
         AuthProviderConfig, AuthProviderField, BinaryOperator, Expression, HttpVerb, ParamDef,
-        RouteAuth, TaskBody,
+        RouteAuth, TakeBinding, TakeKind, TaskBody,
     };
 
     fn make_route(verb: HttpVerb, path: &str) -> Statement {
@@ -544,7 +542,6 @@ mod tests {
             auth: None,
             allow: vec![],
             take: vec![],
-            schema: None,
             body: vec![],
             line: 1,
             column: 1,
@@ -609,7 +606,6 @@ mod tests {
                 }),
             }],
             take: vec![],
-            schema: None,
             body: vec![Statement::Reply {
                 status_code: Expression::Integer(200),
                 content_type: crate::ast::ReplyContentType::Json,
@@ -680,7 +676,6 @@ mod tests {
             auth: None,
             allow: vec![],
             take: vec![],
-            schema: None,
             body: vec![Statement::Reply {
                 status_code: Expression::Integer(200),
                 content_type: crate::ast::ReplyContentType::Json,
@@ -899,14 +894,20 @@ mod tests {
             path: "/users".into(),
             auth: None,
             allow: vec![],
-            take: vec![TakeBinding::Payload("payload".into())],
-            schema: Some("UserPayload".into()),
+            take: vec![TakeBinding {
+                kind: TakeKind::Payload,
+                name: "payload".into(),
+                schema: Some("UserPayload".into()),
+            }],
             body: vec![],
             line: 1,
             column: 1,
         };
         let registry = load(vec![stmt], None).unwrap();
-        assert_eq!(registry.routes[0].schema.as_deref(), Some("UserPayload"));
+        assert_eq!(
+            crate::ast::payload_schema(&registry.routes[0].take),
+            Some("UserPayload")
+        );
     }
 
     // --- v0.4.0: Circular reference detection tests ---

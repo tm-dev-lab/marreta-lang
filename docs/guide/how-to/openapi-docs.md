@@ -45,6 +45,12 @@ route POST "/contracts/echo" take payload as ContractTypesPayload
 A bare `take payload` with no schema still accepts a body, but it shows up as a free-form,
 untyped object. For a stable public contract, bind the request and response to schemas.
 
+Query and header schemas sharpen the contract the same way. `take query as <Schema>` and
+`take headers as <Schema>` emit one named, typed parameter per field (a repeated-key
+`list of <scalar>` becomes an array), while a bare `take query` / `take headers` reads arbitrary
+input and contributes no parameters to the spec. So declaring a schema is how a route opts into
+documented query and header parameters.
+
 ## Configure it
 
 Two variables control the docs, both covered in the
