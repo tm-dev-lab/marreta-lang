@@ -265,15 +265,17 @@ fn parse_list_link(line: &str) -> Option<(&str, &str)> {
 }
 
 /// Split a `---` YAML frontmatter block off the front of a markdown file, returning
-/// `(frontmatter, body)`. When there is no frontmatter, returns `(None, whole)`.
+/// `(frontmatter, body)`. When there is no frontmatter, returns `(None, whole)`. CRLF is
+/// normalized to LF first, so a Windows checkout produces the same bytes as a Unix one.
 fn split_frontmatter(raw: &str) -> (Option<String>, String) {
-    let rest = match raw.strip_prefix("---\n") {
-        Some(rest) => rest,
-        None => return (None, raw.to_string()),
+    let normalized = raw.replace("\r\n", "\n");
+    let rest = match normalized.strip_prefix("---\n") {
+        Some(rest) => rest.to_string(),
+        None => return (None, normalized),
     };
     match rest.split_once("\n---\n") {
         Some((fm, body)) => (Some(fm.to_string()), body.to_string()),
-        None => (None, raw.to_string()),
+        None => (None, normalized),
     }
 }
 

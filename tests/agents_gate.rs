@@ -158,11 +158,18 @@ fn collect_md(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
+// Line-based so it tolerates both LF and CRLF (CI's Windows/WSL checkout is CRLF, where a
+// byte match on "---\n" would miss the frontmatter and read every page as unsummarized).
 fn frontmatter_summary(text: &str) -> Option<String> {
-    let rest = text.strip_prefix("---\n")?;
-    let (frontmatter, _) = rest.split_once("\n---\n")?;
-    for line in frontmatter.lines() {
-        if let Some(value) = line.strip_prefix("summary:") {
+    let mut lines = text.lines();
+    if lines.next()?.trim() != "---" {
+        return None;
+    }
+    for line in lines {
+        if line.trim() == "---" {
+            break;
+        }
+        if let Some(value) = line.trim().strip_prefix("summary:") {
             return Some(value.trim().trim_matches('"').trim().to_string());
         }
     }
