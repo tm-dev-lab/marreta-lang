@@ -60,8 +60,8 @@ single provider: PostgreSQL for the relational database, MongoDB for the documen
 (NoSQL) database, Redis for the cache, and RabbitMQ for messaging (point to point
 and pub/sub).
 
-After several rounds of experiments the results validated all three. You can read
-more about them at [marreta.dev](https://marreta.dev).
+These three goals shaped every design decision in the language. You can read more
+about the language and how it approaches them at [marreta.dev](https://marreta.dev).
 
 ## Why Marreta?
 
@@ -82,8 +82,8 @@ giving up clarity, efficiency, or tooling.
   live in one coherent project model with a simple CLI loop.
 - **Low footprint.** A native runtime binary with predictable resource usage.
   Infrastructure is configured via the environment, not wired in code.
-- **Performance-minded.** Implemented in Rust, with the HTTP hot path measured by
-  benchmarks and guided by runtime profiling rather than guesswork.
+- **Performance-minded.** Implemented in Rust, with the HTTP hot path guided by
+  runtime profiling rather than guesswork.
 - **Focused by design.** Built for REST APIs, not as a general-purpose language.
 
 ## Installation

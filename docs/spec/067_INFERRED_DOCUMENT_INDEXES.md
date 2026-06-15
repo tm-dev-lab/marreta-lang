@@ -2,7 +2,7 @@
 
 > Status: Delivered
 > Type: Language runtime (document provider, static analysis + serve startup)
-> Scope: The document provider creates the indexes an app needs by inferring them from the queries the app actually runs, instead of asking the developer to declare them. Static analysis of the document query pipeline at load produces a per-collection index plan; `serve` ensures those indexes in the background at startup. No declaration, no schema marker, no migration. Document-only by design (the relational provider tolerated the launch scenario unindexed, proven in the Spec 066 benchmark). Pre-launch, supersedes a reverted declarative approach (see History).
+> Scope: The document provider creates the indexes an app needs by inferring them from the queries the app actually runs, instead of asking the developer to declare them. Static analysis of the document query pipeline at load produces a per-collection index plan; `serve` ensures those indexes in the background at startup. No declaration, no schema marker, no migration. Document-only by design (the relational provider tolerated the launch scenario unindexed, proven by the launch load test). Pre-launch, supersedes a reverted declarative approach (see History).
 
 > History: A declarative approach (an `index` / `index unique` schema directive plus a `doc:` collection marker, with relational migration indexes) was implemented and reverted pre-launch, before any release. Rationale for the U-turn: a declaration only protects the developer who already knows indexes exist, while the audience this language is built for is exactly the one who will not declare and whose app collapses under load; and the `doc:` marker added ceremony off the language's convention-over-configuration identity (it also had no call-site enforcement, so it could index the wrong collection silently). The two pieces that do not depend on declaration, the `unique_violation` 409 mapping and the document-driver ensure machinery, were preserved by cherry-pick from tag `pre-067-revert` and are reused here.
 
@@ -10,7 +10,7 @@
 
 ## 1. Purpose
 
-The launch benchmark (Spec 066) proved the problem with numbers. The same app, capped at 1 CPU on a dedicated host, on the route that lists an account's transactions:
+A load test on the launch scenario proved the problem with numbers. The same app, capped at 1 CPU on a dedicated host, on the route that lists an account's transactions:
 
 ```ruby
 route GET "/accounts/:id/transactions"
@@ -41,7 +41,7 @@ The filter shape feeds inference regardless of the pipeline's terminal. A `where
 
 ### 2.2 Composite indexes by the ESR rule
 
-A single-field index on the filtered field already restored the Spec 066 run, but the route's real shape (`where("account_id" == ...)` plus `order("_id", "desc")`) wants the composite `{ account_id: 1, _id: -1 }`, and the restricted DSL hands the categories over for free. Apply the standard Mongo compound-index rule, **ESR (Equality, Sort, Range)**:
+A single-field index on the filtered field already restored that run, but the route's real shape (`where("account_id" == ...)` plus `order("_id", "desc")`) wants the composite `{ account_id: 1, _id: -1 }`, and the restricted DSL hands the categories over for free. Apply the standard Mongo compound-index rule, **ESR (Equality, Sort, Range)**:
 
 - `where` equality step → an Equality field,
 - `order` step → a Sort field (with its direction),
@@ -98,21 +98,21 @@ Inference covers the 80 percent (equality plus sort, the bulk of a REST API). Ad
 
 `db` is out of scope (proven to tolerate the launch scenario). Beyond that, three things are given up deliberately, and are named so the decision is conscious, not accidental:
 
-- **Uniqueness has no language expression again.** It is a domain rule, not inferable from queries, and Spec 066 was about performance, not integrity. The `unique_violation` 409 stays alive for an index a human marks unique by hand. A minimal uniqueness declaration is a possible future concern.
+- **Uniqueness has no language expression again.** It is a domain rule, not inferable from queries, and the launch load test was about performance, not integrity. The `unique_violation` 409 stays alive for an index a human marks unique by hand. A minimal uniqueness declaration is a possible future concern.
 - **A declared relational index has no language path.** The workaround is `db.native_query`, which accepts DDL, and the benchmark proved `db` tolerates the launch scenario without one.
 - **There is no opt-out.** A write-heavy collection with a rarely-run query gets an index anyway, write cost included. That is the price of convention and it is the 20 percent; the answer is the future override (2.7), not added complexity now.
 
 ## 5. Acceptance criteria
 
 1. Indexes are inferred from the document query surface at load (static analysis of `doc.<collection> >> where/order/...`), with no declaration, no `doc:` marker, and no migration.
-2. The inferred index for an equality filter plus a sort is the ESR composite (for the Spec 066 route, `{ account_id: 1, _id: -1 }`), and shapes are deduplicated by prefix per collection.
+2. The inferred index for an equality filter plus a sort is the ESR composite (for the launch route, `{ account_id: 1, _id: -1 }`), and shapes are deduplicated by prefix per collection.
 3. `like()`, `doc.pipeline`, and non-literal-field shapes are excluded from inference.
 4. `serve` ensures the inferred indexes in the background, concurrent with serving, never delaying the bind; the app serves immediately even when a build is in progress; build start/ready/failure are logged by `serve`; a build failure does not bring it down. `doctor` (a separate process) reports each inferred index as present or absent and flags orphan owned indexes; it does not observe the build lifecycle, which lives in the serve logs.
 5. Inferred indexes carry deterministic Marreta-owned names; Marreta never touches an index outside that scheme; an orphaned inferred index is reported by `doctor`, never auto-dropped.
 6. The preserved 409 mapping and ensure/ownership machinery come from tag `pre-067-revert` by cherry-pick, with their tests; their semantics are preserved. The ensure signature is extended to carry index direction (`keys: &[(String, bool)]`), and the cherry-picked tests adapt to it rather than being rewritten.
 7. The reverted declarative surface (`index`/`unique`/`doc:`, the `persistent_schema` doc index validations, the relational migration index machinery) is gone; `db` is unchanged.
 8. The History note is present in this spec, the CHANGELOG records the rewind ("supersedes a reverted pre-release declarative approach, see tag `pre-067-revert`"), and SPEC.md §1.3 records the house rule (a spec that never reached a release may be rewound; a shipped spec gets superseded).
-9. **Functional coverage of the new behavior** (the house rule: exercise the new behavior end-to-end, not just no-regression): a functional test against a real MongoDB asserts that, for the Spec 066 query shape, the inferred composite index exists on the collection by its Marreta-owned name and with keys `{ account_id: 1, _id: -1 }`, read back through `list_index_names`. The old declarative fixtures vanish in the rewind, so this is the feature's only live coverage.
+9. **Functional coverage of the new behavior** (the house rule: exercise the new behavior end-to-end, not just no-regression): a functional test against a real MongoDB asserts that, for the launch query shape, the inferred composite index exists on the collection by its Marreta-owned name and with keys `{ account_id: 1, _id: -1 }`, read back through `list_index_names`. The old declarative fixtures vanish in the rewind, so this is the feature's only live coverage.
 10. Standard gates: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, the full test suite, and the runtime tier (`functional_tests`, `migrations_functional` — which verifies AC7's "db is unchanged", since the cherry-picked 409 classifier touches `src/db/postgres.rs` — and `e2e`); document guide pages are Spec 069.
 
 ---

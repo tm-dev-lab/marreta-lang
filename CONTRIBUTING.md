@@ -58,7 +58,6 @@ Repository layout:
 | `tests/` | Rust integration tests and fixtures |
 | `e2e/` | In-memory feature suite exercised over localhost (see `e2e/README.md`) |
 | `docs/examples/` | Example projects and functional validation suites |
-| `docs/benchmarks/`, `docs/performance/` | Performance harnesses and historical measurements |
 | `docs/editors/` | The published VS Code extension (a thin client over the CLI) |
 | `docs/spec/`, `docs/assets/` | Language specs and brand assets |
 | `.github/workflows/` | Manual build, release, extension release, e2e, and smoke workflows |
