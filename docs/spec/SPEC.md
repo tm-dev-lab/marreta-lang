@@ -297,7 +297,7 @@ indexes reverted in favor of inference; reverted objects at tag `pre-067-revert`
   Spec B, out of scope here.
 - Spec 079 is delivered: a public `/roadmap` page on the site before launch, in undated tiers
   (a positioning artifact, not a commitment, shipping no roadmap item itself). Proposed items:
-  the MCP server, cloud-native messaging providers (run `queue.`/`topic.` on Azure Service Bus,
+  the MCP server, native Windows support (no WSL), cloud-native messaging providers (run `queue.`/`topic.` on Azure Service Bus,
   AWS SQS/SNS, GCP Pub/Sub + Cloud Tasks by swapping only the provider, the multi-provider
   showcase), schema field defaults (the 077 follow-up), and more relational providers (MySQL and
   SQLite for zero-setup local dev); scheduled tasks, richer auth, and observability exporters under

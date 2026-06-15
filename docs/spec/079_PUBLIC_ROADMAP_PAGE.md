@@ -40,7 +40,9 @@ existing `about.astro` (BaseLayout, the `cl-*` component styles). Static content
 - **Next** — the near-term direction:
   1. **MCP server.** An official Marreta MCP server so an AI assistant can check and self-correct
      against the real toolchain, plus an "Ask Professor Martim" chat on the site.
-  2. **Cloud-native messaging providers.** Run `queue.`/`topic.` on a cloud's managed messaging
+  2. **Native Windows support.** Run the runtime and CLI natively on Windows without WSL, the same
+     single-binary experience as macOS and Linux.
+  3. **Cloud-native messaging providers.** Run `queue.`/`topic.` on a cloud's managed messaging
      without changing a line of application code, only the provider in configuration: Azure Service
      Bus, AWS (SQS for `queue.`, SNS for `topic.`), and Google Cloud (Pub/Sub for `topic.`, Cloud
      Tasks for `queue.`). The showcase of the multi-provider design. (`db`/`doc`/`cache` already run
@@ -51,18 +53,18 @@ existing `about.astro` (BaseLayout, the `cl-*` component styles). Static content
      future direction, not a current-support claim: it is AMQP, so it would extend the existing
      provider, but Amazon MQ is TLS-only (`amqps://`) and the provider has no explicit TLS handling
      yet and was never tested against it, so the page does not say it works today.)
-  3. **Schema field defaults.** Declare a default on a schema field, filled by the runtime and, for
+  4. **Schema field defaults.** Declare a default on a schema field, filled by the runtime and, for
      persistent schemas, as a database column default tracked by `migrate` (the named follow-up
      deferred from Spec 077).
-  4. **More relational providers.** Additional `db.` implementations behind the same namespace:
+  5. **More relational providers.** Additional `db.` implementations behind the same namespace:
      MySQL for another production database, and SQLite for zero-setup local development and tests
      (no container to run), making the multi-provider promise concrete on the relational side.
 - **Exploring** — under consideration, not committed:
-  5. **Scheduled tasks.** First-class recurring/scheduled work (cron-like), a gap for backend
+  6. **Scheduled tasks.** First-class recurring/scheduled work (cron-like), a gap for backend
      services today.
-  6. **Richer authentication.** OAuth2/OIDC discovery and JWKS rotation, beyond the current API key
+  7. **Richer authentication.** OAuth2/OIDC discovery and JWKS rotation, beyond the current API key
      and HMAC JWT.
-  7. **Observability exporters.** OpenTelemetry traces and metrics for production readiness.
+  8. **Observability exporters.** OpenTelemetry traces and metrics for production readiness.
 
 ### 2.3 Placement
 
@@ -100,9 +102,12 @@ existing `about.astro` (BaseLayout, the `cl-*` component styles). Static content
 
 - **Item cut.** Scheduled tasks moved to "Exploring" (new capability, design-heavy, "a gap today" is
   a reason to want it, not evidence of near-term); MySQL stays in "Next" (contained second `db.`
-  driver, concretizes the multi-provider thesis). Final: Next = MCP, messaging, defaults, MySQL;
-  Exploring = scheduled tasks, richer auth, observability. The principle is under-promise: a lean
-  Next that ships builds credit.
+  driver, concretizes the multi-provider thesis). Final: Next = MCP, native Windows support,
+  messaging, defaults, MySQL; Exploring = scheduled tasks, richer auth, observability. The principle
+  is under-promise: a lean Next that ships builds credit.
+- **Native Windows support added post-delivery (owner).** Placed in Next right after MCP (the
+  current Windows path is WSL). A future-direction item, no capability claim, so no extra factual
+  bar beyond the same value-not-how framing.
 - **Recently shipped tier: approved in review, then removed by the owner.** The review added it for
   cadence, but the owner's call is that a roadmap is a forward vision, not a record of the past, so
   only Next and Exploring remain. The page is a vertical timeline to convey forward motion.
@@ -127,10 +132,13 @@ existing `about.astro` (BaseLayout, the `cl-*` component styles). Static content
 
 Delivered 2026-06-15. A `/roadmap` page on the site (`src/pages/roadmap.astro`, plus a nav and a
 footer link), forward-only as a vertical timeline, no dates, with a "direction, not a promise" lead.
-Next: MCP server; cloud-native messaging (Azure Service Bus, AWS SQS/SNS and Amazon MQ as a future
+Next: MCP server; native Windows support (no WSL); cloud-native messaging (Azure Service Bus, AWS SQS/SNS and Amazon MQ as a future
 target, Google Cloud Pub/Sub and Cloud Tasks); schema field defaults; more relational providers
 (MySQL, and SQLite for zero-setup local development). Exploring: scheduled tasks, richer auth,
 observability. Site-only, no language/runtime change.
+
+Post-delivery: "Native Windows support (no WSL)" was added to Next right after MCP
+(owner), a future-direction item with no capability claim.
 
 Two gates passed (design and code review). Code review took two rounds on the Amazon MQ line: the
 first draft's "already works with the current provider" was an untested capability claim (and Amazon
