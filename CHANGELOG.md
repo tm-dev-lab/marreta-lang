@@ -15,6 +15,11 @@ Track of all implementation progress. Use this to resume work after session loss
 
 ## Session Log
 
+### 2026-06-15 — Spec 079 Public Roadmap Page (site, forward-only timeline)
+
+- [x] `spec/079_PUBLIC_ROADMAP_PAGE.md` — a `/roadmap` page on the site (`src/pages/roadmap.astro` + nav + footer), site-only, no language/runtime change. Forward-only as a vertical timeline (no "recently shipped"), no dates, with a "direction, not a promise" lead. **Next**: MCP server; cloud-native messaging (Azure Service Bus, AWS SQS/SNS and Amazon MQ as a future target, Google Cloud Pub/Sub and Cloud Tasks); schema field defaults; more relational providers (MySQL, and SQLite for zero-setup local development). **Exploring**: scheduled tasks, richer auth, observability.
+- [x] Two gates passed (design + code review). Code review took two rounds on the Amazon MQ line: the untested "already works with the current provider" claim was removed (Amazon MQ is TLS-only and the provider has no explicit TLS handling yet), so Amazon MQ stays as a future AWS messaging target only. Site `npm run build` + init fidelity tests green.
+
 ### 2026-06-15 — Spec 078 AI Agent Knowledge (generated AGENTS.md primer + llms.txt)
 
 - [x] `spec/078_AI_AGENT_KNOWLEDGE.md` — teaches AI assistants to write Marreta, generated from a single verified source (the `catalog_json()` surface, `docs/guide` via `SUMMARY.md` + `summary:` frontmatter, and tested examples) so the knowledge cannot drift from the language. A new `xtask` crate (workspace; `default-members = ["."]` keeps the runtime build/test scoped) emits `docs/agents/llms.txt` (curated index), `llms-full.txt` (full reference), and a version-neutral `AGENTS.md` whose every code block is region-extracted from a tested example.
