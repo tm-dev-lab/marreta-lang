@@ -16,7 +16,7 @@
     { "include": "#constants" },
     { "include": "#operators" },
     { "include": "#types" },
-    { "include": "#builtins" },
+    { "include": "#requestVariables" },
     { "include": "#namespaceCalls" },
     { "include": "#namespaces" },
     { "include": "#methodCalls" },
@@ -162,7 +162,7 @@
       "patterns": [
         {
           "name": "keyword.control.marreta",
-          "match": "\\b(task|route|match|fallback|map|reduce|keep|skip|require|reject|while|if|else|take|reply|fail|listen|export|transaction|as|response|scenario|given|when|then|returns|is|anything|raise|rescue|on|topic|nack|requeue|ack|with|auth|allow)\\b"
+          "match": "\\b(task|route|match|fallback|map|reduce|keep|skip|require|reject|while|if|else|take|reply|fail|listen|export|transaction|as|response|scenario|given|when|then|returns|is|anything|raise|rescue|on|topic|nack|requeue|with|auth|allow)\\b"
         },
         {
           "name": "constant.language.boolean.marreta",
@@ -190,7 +190,7 @@
       "patterns": [
         {
           "name": "keyword.operator.marreta",
-          "match": "(>>|\\*>>|->|=>|==|!=|>=|<=|>|<|\\+|-|\\*|/|%|:|=|\\b(like|in)\\b)"
+          "match": "(>>|\\*>>|->|=>|==|!=|>=|<=|>|<|\\+|-|\\*|/|%|:|=|\\b(like|in|and|or|not)\\b)"
         }
       ]
     },
@@ -198,15 +198,15 @@
       "patterns": [
         {
           "name": "storage.type.marreta",
-          "match": "\\b(schema|string|integer|float|decimal|boolean|list|map|of|instant|date|time|duration|interval)\\b"
+          "match": "\\b(schema|string|integer|float|decimal|boolean|list|map|of|instant|date|time|duration|interval|enum)\\b"
         }
       ]
     },
-    "builtins": {
+    "requestVariables": {
       "patterns": [
         {
-          "name": "support.function",
-          "match": "\\b(print|type|len|range|decimal)\\b"
+          "name": "variable.language.marreta",
+          "match": "\\b(params|query|payload|headers)\\b"
         }
       ]
     },

@@ -2,7 +2,7 @@
   "name": "marretalang",
   "displayName": "MarretaLang",
   "description": "Syntax, completion, diagnostics, and formatting for Marreta (.marreta) REST APIs, powered by the Marreta CLI.",
-  "version": "0.2.19",
+  "version": "0.2.20",
   "publisher": "MarretaTeam",
   "license": "MIT",
   "icon": "icons/marreta-mascot.png",
