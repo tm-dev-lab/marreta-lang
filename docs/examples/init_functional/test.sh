@@ -133,7 +133,9 @@ for file in \
     marreta.env \
     marreta.env.example \
     .gitignore \
-    README.md
+    README.md \
+    AGENTS.md \
+    .github/copilot-instructions.md
 do
     assert_file_exists "${PROJECT_DIR}/${file}"
 done
@@ -156,6 +158,28 @@ assert_file_contains "${PROJECT_DIR}/marreta.env.example" "MARRETA_TRACE_CONTEXT
 assert_file_contains "${PROJECT_DIR}/README.md" "marreta serve"
 assert_file_contains "${PROJECT_DIR}/README.md" "http://localhost:8080/greetings"
 pass "generated file contents"
+
+# Spec 078: the AI-agent guide is scaffolded by default, stamped with the runtime version,
+# and the thin pointers point back to it.
+assert_file_contains "${PROJECT_DIR}/AGENTS.md" "Generated for Marreta v"
+assert_file_contains "${PROJECT_DIR}/AGENTS.md" "do not write it like Python"
+assert_file_contains "${PROJECT_DIR}/AGENTS.md" 'route GET'
+assert_file_contains "${PROJECT_DIR}/.github/copilot-instructions.md" "AGENTS.md"
+pass "generated agent guide"
+
+# Spec 078: --no-agents opts out, and `marreta agents` writes the set on demand.
+NOAGENTS_DIR="${PROJECT_DIR}-noagents"
+rm -rf "${NOAGENTS_DIR}"
+"${BIN}" init "${NOAGENTS_DIR}" --no-agents >/dev/null
+if [[ -f "${NOAGENTS_DIR}/AGENTS.md" ]]; then
+    fail "--no-agents should not generate AGENTS.md"
+fi
+( cd "${NOAGENTS_DIR}" && "${BIN}" agents >/dev/null )
+assert_file_exists "${NOAGENTS_DIR}/AGENTS.md"
+assert_file_contains "${NOAGENTS_DIR}/AGENTS.md" "Generated for Marreta v"
+assert_file_exists "${NOAGENTS_DIR}/.github/copilot-instructions.md"
+rm -rf "${NOAGENTS_DIR}"
+pass "--no-agents opt-out and marreta agents"
 
 echo ""
 echo "Running generated project checks..."

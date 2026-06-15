@@ -1,0 +1,49 @@
+# Source for the generated AGENTS.md primer (Spec 078). Each `# region:` block is
+# extracted verbatim into the agent guide, so the guide only shows tested code. The
+# scenario tests under tests/ exercise every route, mocking the providers.
+
+auth jwt primer_jwt {
+    issuer: "https://primer.local/issuer"
+    audience: "marreta-primer"
+    secret: env.MARRETA_JWT_SECRET
+    algorithm: "HS256"
+}
+
+# region: route
+route GET "/ping"
+    reply 200, { ok: true }
+# endregion
+
+route GET "/accounts/:id/owner"
+    require auth primer_jwt
+    # region: request
+    account = doc.accounts.find(params.id)
+    owner = auth.subject
+    # endregion
+    require account else fail 404, "account not found"
+    reply 200, { id: params.id, owner: owner }
+
+# region: validate
+schema NewAccount
+    owner: string
+
+route POST "/accounts" take payload as NewAccount
+    account = doc.accounts.save({ owner: payload.owner })
+    reply 201, account
+# endregion
+
+route POST "/rates"
+    # region: namespaces
+    cache.set("rate:usd", 5)
+    # endregion
+    reply 202, { ok: true }
+
+route GET "/accounts/:id"
+    account = doc.accounts.find(params.id)
+    # region: respond
+    require account else fail 404, "account not found"
+    reply 200, account
+    # endregion
+
+route GET "/search" take query as Search
+    reply 200, { term: query.term }

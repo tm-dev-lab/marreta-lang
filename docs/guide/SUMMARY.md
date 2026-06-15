@@ -27,6 +27,7 @@
 - [Use feature flags](how-to/use-feature-flags.md)
 - [Inspect the OpenAPI docs](how-to/openapi-docs.md)
 - [Observe logs and traces](how-to/observe-logs.md)
+- [Use AI assistants](how-to/use-ai-assistants.md)
 
 ## Reference
 

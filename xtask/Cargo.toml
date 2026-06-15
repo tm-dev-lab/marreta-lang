@@ -1,0 +1,11 @@
+# Build-time asset generator for Spec 078 (AI agent knowledge). Kept out of the shipped
+# runtime binary; invoked as `cargo run -p xtask -- gen`. Standard library only, no deps,
+# so it stays fast and adds nothing to the runtime's dependency tree.
+[package]
+name = "xtask"
+version = "0.0.0"
+publish = false
+edition = "2024"
+rust-version = "1.85"
+
+[dependencies]

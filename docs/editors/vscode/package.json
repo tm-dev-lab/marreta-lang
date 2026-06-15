@@ -2,7 +2,7 @@
   "name": "marretalang",
   "displayName": "MarretaLang",
   "description": "Syntax, completion, diagnostics, and formatting for Marreta (.marreta) REST APIs, powered by the Marreta CLI.",
-  "version": "0.2.20",
+  "version": "0.2.21",
   "publisher": "MarretaTeam",
   "license": "MIT",
   "icon": "icons/marreta-mascot.png",
@@ -42,7 +42,8 @@
       { "command": "marreta.lint", "title": "Lint", "category": "Marreta" },
       { "command": "marreta.format", "title": "Format Document", "category": "Marreta" },
       { "command": "marreta.doctor", "title": "Doctor", "category": "Marreta" },
-      { "command": "marreta.init", "title": "Init Project", "category": "Marreta" }
+      { "command": "marreta.init", "title": "Init Project", "category": "Marreta" },
+      { "command": "marreta.agents", "title": "Generate Agent Guide", "category": "Marreta" }
     ],
     "configuration": {
       "title": "Marreta",

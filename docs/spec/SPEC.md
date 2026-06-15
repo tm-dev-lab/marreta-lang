@@ -279,6 +279,22 @@ indexes reverted in favor of inference; reverted objects at tag `pre-067-revert`
   nothing for a raw bind (the `deepObject` query parameter was removed). Schema field defaults are
   deliberately out of scope, a named follow-up that would add the DB column default and `migrate`
   default-drift on top of the delivered Spec 073.
+- Spec 078 is delivered: AI agent knowledge. A new-language adoption barrier in
+  the AI era is that models do not know Marreta, so this generates, from a single verified source
+  (the `catalog_json()` surface, `docs/guide` via `SUMMARY.md` + frontmatter, and tested examples), a
+  project `AGENTS.md` primer scaffolded by `marreta init` (offline stable core leading with a "diff
+  against the model's priors", a live `llms-full.txt` pointer, and a version stamp injected at
+  emission so the committed asset stays version-neutral) plus `llms.txt`/`llms-full.txt` served at the
+  site root. Generation is a build-time `xtask` (baked into the binary via `include_str!`); `doctor`
+  warns read-only when the project's stamp is behind the runtime and `marreta agents` regenerates;
+  the site initializer emits the same set via the existing init-fixture parity. The emitted set is
+  `AGENTS.md` plus a `.github/copilot-instructions.md` pointer (the Cursor pointer was dropped, Cursor
+  reads `AGENTS.md` natively), with a `marreta agents` VS Code palette command added. An anti-drift
+  gate (catalog ⊆ `llms-full` over all four catalog kinds, every `SUMMARY` page with a non-empty
+  `summary:`, snippet provenance by region marker, and codegen freshness via `git diff`) rides
+  `build.yml`, no new workflow. The Marreta
+  MCP server (validate/grounding loop, the "Ask Professor Martim" site chat) is a named fast-follow,
+  Spec B, out of scope here.
 - The remaining public-v1 gaps should now be tracked as new explicit specs,
   not as open follow-ups from the delivered block.
 

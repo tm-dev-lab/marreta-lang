@@ -401,12 +401,43 @@ pub fn build_doctor_report(
         sections.push(modules_section);
     }
 
+    if let Some(agents_section) = build_agents_section(entrypoint) {
+        sections.push(agents_section);
+    }
+
     sections.push(build_tests_section(entrypoint, &loaded.registry.routes));
 
     DoctorReport {
         sections,
         has_errors,
     }
+}
+
+/// `Agent guide` section (Spec 078): read-only freshness of the project's `AGENTS.md`. Absent
+/// file means no section (a project may opt out with `init --no-agents`); a stamp behind the
+/// running runtime is a non-failing advisory, never a rewrite.
+fn build_agents_section(entrypoint: &Path) -> Option<DoctorSection> {
+    let project_root = entrypoint.parent().unwrap_or_else(|| Path::new("."));
+    let content = std::fs::read_to_string(project_root.join("AGENTS.md")).ok()?;
+    let entry = if crate::agents::is_stale(&content) {
+        let stamped = crate::agents::stamped_version(&content).unwrap_or("an unknown version");
+        DoctorEntry {
+            status: DoctorStatus::Skip,
+            message: format!(
+                "AGENTS.md is stamped for {stamped}, runtime is {}. Run `marreta agents` to refresh",
+                crate::version::MARRETA_VERSION
+            ),
+        }
+    } else {
+        ok(format!(
+            "AGENTS.md up to date ({})",
+            crate::version::MARRETA_VERSION
+        ))
+    };
+    Some(DoctorSection {
+        title: "Agent guide".to_string(),
+        entries: vec![entry],
+    })
 }
 
 /// Informational `Modules` section (Spec 061): each file-namespace and the exported

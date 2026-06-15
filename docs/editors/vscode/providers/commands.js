@@ -37,6 +37,7 @@ function registerCommands(context) {
     vscode.commands.executeCommand("editor.action.formatDocument")
   );
   register("marreta.doctor", () => runInTerminal("Marreta Doctor", ["doctor"], workingDir()));
+  register("marreta.agents", () => runInTerminal("Marreta Agents", ["agents"], workingDir()));
   register("marreta.init", async () => {
     const target = await vscode.window.showInputBox({
       prompt: "Project path for marreta init",

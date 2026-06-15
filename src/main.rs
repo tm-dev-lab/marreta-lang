@@ -120,6 +120,10 @@ fn main() {
             let (path, options) = parse_init_args(&args);
             run_init(path, options);
         }
+        Some("agents") => {
+            cli_ux::begin("agents");
+            run_agents();
+        }
         Some("fmt") => {
             // `--stdin` is machine mode (editor format-on-save) and stays frame-free.
             if !fmt_is_machine_mode(&args) {
@@ -582,12 +586,13 @@ fn run_doctor(entrypoint: &ProjectEntrypoint, connect: bool) {
 }
 
 fn parse_init_args(args: &[String]) -> (&str, InitOptions) {
-    let usage = "Usage: marreta init <project-path> [--with db,cache,doc,queue]";
+    let usage = "Usage: marreta init <project-path> [--with db,cache,doc,queue] [--no-agents]";
     let Some(path) = args.get(2).map(String::as_str) else {
         exit_with_marreta_cli_error("invalid init usage", usage);
     };
 
     let mut services = std::collections::BTreeSet::new();
+    let mut no_agents = false;
     let mut index = 3;
     while index < args.len() {
         let arg = args[index].as_str();
@@ -615,12 +620,21 @@ fn parse_init_args(args: &[String]) -> (&str, InitOptions) {
                 Err(err) => exit_with_marreta_cli_error("invalid init usage", err),
             }
             index += 1;
+        } else if arg == "--no-agents" {
+            no_agents = true;
+            index += 1;
         } else {
             exit_with_marreta_cli_error("invalid init usage", usage);
         }
     }
 
-    (path, InitOptions { services })
+    (
+        path,
+        InitOptions {
+            services,
+            no_agents,
+        },
+    )
 }
 
 fn run_init(path: &str, options: InitOptions) {
@@ -630,6 +644,27 @@ fn run_init(path: &str, options: InitOptions) {
             cli_ux::end(cli_ux::Outcome::Success, "project created");
         }
         Err(err) => exit_with_marreta_cli_error("init failed", err),
+    }
+}
+
+/// `marreta agents`: (re)write the AI-agent assets into the current project, idempotently. The
+/// primer is stamped with the running runtime's version, so this is also how a developer refreshes
+/// a stale `AGENTS.md` after upgrading the runtime.
+fn run_agents() {
+    let entrypoint = resolve_project_entrypoint(None);
+    let project_root = entrypoint
+        .path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .to_path_buf();
+    match marreta::agents::write_into(&project_root) {
+        Ok(written) => {
+            for path in &written {
+                println!("  wrote {}", path.display());
+            }
+            cli_ux::end(cli_ux::Outcome::Success, "agent guide written");
+        }
+        Err(err) => exit_with_marreta_cli_error("agents failed", err.to_string()),
     }
 }
 
@@ -2234,7 +2269,8 @@ fn print_help() {
     println!("{} — A DSL for REST APIs", runtime_version_label());
     println!();
     println!("Usage:");
-    println!("  marreta init <project-path> [--with LIST]  Create a Marreta project");
+    println!("  marreta init <project-path> [--with LIST] [--no-agents]  Create a Marreta project");
+    println!("  marreta agents                  Write or refresh the AI-agent guide (AGENTS.md)");
     println!("  marreta fmt [--check] [path...] Format Marreta source files");
     println!("  marreta lint [--strict] [--format json] [path...]  Analyze Marreta source files");
     println!(

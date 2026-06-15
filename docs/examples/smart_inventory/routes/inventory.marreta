@@ -27,7 +27,9 @@ route POST "/inventory/seed" take payload as SeedProductRequest
     }
 
 route GET "/inventory/:sku"
+    # region: pipeline
     product = db.products >> where(sku: params.sku) >> fetch_one
+    # endregion
     require product else fail 404, "product not found"
 
     cached = cache.get(inventory.stock_key(params.sku))

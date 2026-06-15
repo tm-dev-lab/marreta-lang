@@ -59,3 +59,11 @@ getrandom = "0.4.2"
 pretty_assertions = "1"
 reqwest = { version = "0.13.2", features = ["json", "blocking"] }
 tempfile = "3"
+
+# The build-time asset generator (Spec 078) lives in its own crate so it never bloats the
+# shipped runtime binary. default-members keeps `cargo build`/`test` scoped to the runtime;
+# the generator is invoked explicitly as `cargo run -p xtask`.
+[workspace]
+members = ["xtask"]
+default-members = ["."]
+resolver = "3"

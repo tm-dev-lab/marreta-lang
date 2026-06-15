@@ -1,3 +1,5 @@
+/// AI-agent knowledge assets (AGENTS.md primer + llms pointers).
+pub mod agents;
 /// Abstract syntax tree node definitions.
 pub mod ast;
 /// Authentication and authorization provider configuration/runtime support.

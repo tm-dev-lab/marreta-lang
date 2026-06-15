@@ -55,6 +55,17 @@ jobs:
           cargo test
           cargo build --release
 
+      # Spec 078 anti-drift: the AI-agent assets are generated from the guide and the tested
+      # examples, so regenerating them must leave no diff (catalog/summary completeness and
+      # snippet provenance are asserted by `cargo test`, above, via tests/agents_gate.rs). The
+      # primer's snippet source must also keep passing its scenario tests.
+      - name: AI-agent assets are fresh (Spec 078)
+        if: ${{ !matrix.wsl }}
+        run: |
+          cargo run -p xtask -- gen
+          git diff --exit-code -- docs/agents
+          ( cd docs/examples/agents_primer && "${GITHUB_WORKSPACE}/target/release/marreta" test )
+
       # Intel macOS is shipped as a cross-compile from the arm64 runner (the
       # hosted Intel runners are scarce), so validate that target compiles here.
       - name: Cross-compile check for macOS x86_64

@@ -14,6 +14,8 @@ pub struct InitResult {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct InitOptions {
     pub services: BTreeSet<InitService>,
+    /// When true, skip scaffolding the AI-agent assets (AGENTS.md and its pointers).
+    pub no_agents: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -112,6 +114,12 @@ pub fn init_project_with_options(
 
     for (relative_path, content) in files {
         write_file(project_path.join(relative_path), content)?;
+    }
+
+    if !options.no_agents {
+        for (relative_path, content) in crate::agents::emitted_files() {
+            write_file(project_path.join(relative_path), content)?;
+        }
     }
 
     Ok(InitResult {
@@ -225,6 +233,12 @@ fn create_dir(path: PathBuf) -> Result<(), InitError> {
 }
 
 fn write_file(path: PathBuf, content: String) -> Result<(), InitError> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|source| InitError::Io {
+            path: parent.to_path_buf(),
+            source,
+        })?;
+    }
     fs::write(&path, content).map_err(|source| InitError::Io { path, source })
 }
 
@@ -815,6 +829,7 @@ mod tests {
             &project,
             InitOptions {
                 services: services.clone(),
+                no_agents: false,
             },
         )
         .unwrap();

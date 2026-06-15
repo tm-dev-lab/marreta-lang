@@ -1,0 +1,9 @@
+# Source for the generated AGENTS.md primer (Spec 078). The `# region:` block below
+# is extracted verbatim into the agent guide, so the guide only shows tested code.
+
+# region: types
+schema Search
+    term: string
+    tags: list of string
+    limit?: integer
+# endregion

@@ -14,9 +14,10 @@ The `marreta` command runs and inspects a project. The everyday commands are `in
 
 | Command | Purpose |
 |---|---|
-| `marreta init <path> [--with db,cache,doc,queue]` | Scaffolds a new project, adding the chosen providers and a `docker-compose.yml`. |
+| `marreta init <path> [--with db,cache,doc,queue] [--no-agents]` | Scaffolds a new project, adding the chosen providers and a `docker-compose.yml`. `--no-agents` skips the AI-agent guide. |
 | `marreta serve` | Serves the project over HTTP on `MARRETA_PORT` (8080 by default). |
 | `marreta test [path] [--filter TEXT] [--coverage]` | Runs the scenario tests, optionally filtered, with `--coverage` for a report. |
+| `marreta agents` | Writes or refreshes the AI-agent guide (`AGENTS.md` and its pointers) for the current project. See [Use AI assistants](../how-to/use-ai-assistants.md). |
 | `marreta doctor` | Loads the project and reports its configuration without serving. |
 
 ```bash

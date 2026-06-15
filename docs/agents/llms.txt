@@ -1,0 +1,77 @@
+# Marreta Lang
+
+> A focused DSL for REST APIs, with routes, validation, databases, cache, messaging,
+> authentication, tests, and generated OpenAPI docs as first-class language concepts.
+
+Full reference for agents: https://marreta.dev/llms-full.txt
+
+## Tutorials
+
+- [Quickstart](https://marreta.dev/docs/tutorials/quickstart): Install Marreta, scaffold a project, and serve your first endpoint in a couple of minutes.
+- [Save and read your first data](https://marreta.dev/docs/tutorials/save-and-read-data): Build a small notes API backed by the document store, with no schema migration to manage.
+- [Build a relational API with migrations](https://marreta.dev/docs/tutorials/relational-api-with-migrations): Go from an empty folder to a relational, migration-backed product API you can create and read records through.
+- [Make it event-driven](https://marreta.dev/docs/tutorials/make-it-event-driven): Publish an event from a route and have several independent subscribers react to it, using topics.
+- [Run Marreta in a container](https://marreta.dev/docs/tutorials/run-in-a-container): Package a Marreta project as a container image and run it with Docker, Docker Compose, and Kubernetes.
+
+## How-to
+
+- [Install the editor extension](https://marreta.dev/docs/how-to/install-the-editor-extension): Install the Marreta CLI and the MarretaLang editor extension in VS Code or Cursor, so .marreta files get syntax, completion, diagnostics, and formatting.
+- [Configure environment variables](https://marreta.dev/docs/how-to/configure-environment): Set runtime configuration with marreta.env locally and real environment variables in production, and keep secrets out of git.
+- [Persist data with local services](https://marreta.dev/docs/how-to/use-local-services): Add a database to a project, run it locally with Docker, and read and write through the db namespace.
+- [Evolve your database with migrations](https://marreta.dev/docs/how-to/migrations): Generate reviewable SQL from your schemas and apply it, the only step that changes the database.
+- [Use transactions](https://marreta.dev/docs/how-to/use-transactions): Group several database writes so they all commit together or all roll back, with a transaction block.
+- [Read request inputs](https://marreta.dev/docs/how-to/read-request-inputs): Bind the body, query string, and headers with take — raw or schema-validated — and read each one correctly.
+- [Validate a request payload](https://marreta.dev/docs/how-to/validate-a-payload): Reject malformed input with a schema, before a single line of your route runs.
+- [Shape a response](https://marreta.dev/docs/how-to/shape-a-response): Control exactly what your API returns with a response schema, and pick the status code at runtime.
+- [Test your API](https://marreta.dev/docs/how-to/test-your-api): Write scenario tests that run a route and assert its HTTP outcome, stubbing external calls so the tests stay self-contained.
+- [Cache expensive work](https://marreta.dev/docs/how-to/use-cache): Store and reuse values in the cache to avoid repeating expensive work, with TTLs and the cache-aside pattern.
+- [Call an external API](https://marreta.dev/docs/how-to/call-an-external-api): Make HTTP requests to other services with http_client, guard on the response status, and test without a live upstream.
+- [Process work asynchronously with a queue](https://marreta.dev/docs/how-to/async-work-with-a-queue): Hand work off to a queue so a route returns immediately, and process it asynchronously with a consumer.
+- [Secure your API](https://marreta.dev/docs/how-to/secure-your-api): Authenticate callers with require auth and authorize them with allow, using API keys or JWTs.
+- [Handle errors](https://marreta.dev/docs/how-to/handle-errors): Fail a request with the right HTTP status, raise on unexpected conditions, and recover from fallible operations with rescue.
+- [Use feature flags](https://marreta.dev/docs/how-to/use-feature-flags): Gate a route or a branch behind a feature flag backed by a MARRETA_FEATURE_* variable, so behavior is configuration, not code.
+- [Inspect the OpenAPI docs](https://marreta.dev/docs/how-to/openapi-docs): Every project serves an OpenAPI spec and Swagger UI generated from its routes and schemas, with no annotations to maintain.
+- [Observe logs and traces](https://marreta.dev/docs/how-to/observe-logs): Read Marreta's structured logs, emit your own with the log namespace, set the level, and follow a request across log lines with its trace id.
+- [Use AI assistants](https://marreta.dev/docs/how-to/use-ai-assistants): Give AI coding assistants correct Marreta context with the generated AGENTS.md primer and the llms.txt reference, so the model writes Marreta instead of guessing.
+
+## Reference
+
+- [Keywords](https://marreta.dev/docs/reference/keywords): The language keywords and constructs, grouped by what they do.
+- [Control flow and operators](https://marreta.dev/docs/reference/control-flow): Conditionals, pattern matching, loops, pipelines, and the boolean and collection operators.
+- [Conventions](https://marreta.dev/docs/reference/conventions): The house style for idiomatic Marreta: indentation, naming, schemas, routes, tasks, guards, responses, auth, comments, and file structure.
+- [Configuration](https://marreta.dev/docs/reference/configuration): Every MARRETA_* runtime variable: what it does, the values it accepts, and its default.
+- [CLI](https://marreta.dev/docs/reference/cli): The marreta command-line interface: build and run, migrate, format, lint, and editor tooling.
+- [Error codes](https://marreta.dev/docs/reference/errors): The error codes the runtime emits, when they happen, and which ones you can recover from.
+- [Lint codes](https://marreta.dev/docs/reference/lint): Every diagnostic marreta lint can emit, what it flags, why it matters, and how to fix it.
+- [Namespaces](https://marreta.dev/docs/reference/namespaces): The built-in namespaces Marreta exposes for data, messaging, integration, and utilities, one page each.
+- [base64](https://marreta.dev/docs/reference/namespaces/base64): Encode text to base64 and decode it back, with an optional URL-safe alphabet.
+- [cache](https://marreta.dev/docs/reference/namespaces/cache): Store short-lived values through the cache provider, with TTLs, counters, and bulk reads and writes.
+- [db](https://marreta.dev/docs/reference/namespaces/db): Read and write rows in a relational table through the database provider, by primary key or with a query pipeline.
+- [doc](https://marreta.dev/docs/reference/namespaces/doc): Store and read schemaless documents in a collection through the document provider, with no migration.
+- [feature](https://marreta.dev/docs/reference/namespaces/feature): Check static feature flags backed by MARRETA_FEATURE_* environment variables.
+- [fs](https://marreta.dev/docs/reference/namespaces/fs): Read and write UTF-8 files on the local filesystem of the running server.
+- [http_client](https://marreta.dev/docs/reference/namespaces/http_client): Call external HTTP services and read the response envelope, guarding the status yourself.
+- [json](https://marreta.dev/docs/reference/namespaces/json): Parse JSON text into Marreta values and serialize values back to JSON.
+- [log](https://marreta.dev/docs/reference/namespaces/log): Emit structured log events at info, warn, and error levels.
+- [math](https://marreta.dev/docs/reference/namespaces/math): Numeric helpers for rounding, clamping, and comparing numbers.
+- [queue](https://marreta.dev/docs/reference/namespaces/queue): Push a message to a point-to-point queue for one consumer to process asynchronously.
+- [time](https://marreta.dev/docs/reference/namespaces/time): Construct and work with instants, dates, times, durations, and intervals.
+- [topic](https://marreta.dev/docs/reference/namespaces/topic): Publish an event to a topic so every subscriber receives it (publish and subscribe).
+- [uuid](https://marreta.dev/docs/reference/namespaces/uuid): Generate UUID strings, random (v4) or time-ordered (v7).
+- [Types](https://marreta.dev/docs/reference/types): The value types Marreta uses for schema contracts, payloads, responses, and runtime values.
+- [string](https://marreta.dev/docs/reference/types/string): Text values and the methods available on them.
+- [integer](https://marreta.dev/docs/reference/types/integer): Whole numbers and the methods available on them.
+- [float](https://marreta.dev/docs/reference/types/float): Floating-point numbers and the methods available on them.
+- [decimal](https://marreta.dev/docs/reference/types/decimal): Exact, money-safe decimal numbers and the methods available on them.
+- [boolean](https://marreta.dev/docs/reference/types/boolean): True or false values, and where they show up in conditions and guards.
+- [list](https://marreta.dev/docs/reference/types/list): Ordered collections of values and the methods available on them.
+- [map](https://marreta.dev/docs/reference/types/map): Key-value objects and the methods available on them.
+- [Temporal types](https://marreta.dev/docs/reference/types/temporal): Instants, dates, times, durations, and intervals: how to construct them and read their parts.
+
+## Concepts
+
+- [Namespaces](https://marreta.dev/docs/concepts/namespaces): What namespaces are in Marreta, the native ones built into the language and the file namespaces you create by exporting tasks.
+- [Providers](https://marreta.dev/docs/concepts/providers): How Marreta exposes databases, caches, and messaging as pluggable providers behind a single namespace per concern.
+- [Schemas](https://marreta.dev/docs/concepts/schemas): One schema primitive describes your data once and serves as a request contract, a response shape, a database table, and the typed message a consumer receives.
+- [Pipelines](https://marreta.dev/docs/concepts/pipelines): How the >> operator threads a value through a sequence of steps, so data flows left to right instead of nesting calls.
+- [Broadcast](https://marreta.dev/docs/concepts/broadcast): How the *>> operator sends one value to several branches, runs independent work in parallel, and collects the results in order.

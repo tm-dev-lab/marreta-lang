@@ -1,0 +1,38 @@
+# Scenario tests for the primer routes. They run in memory (`marreta test`), mocking
+# every provider call, so this example needs no database, cache, or auth backend. The
+# `# region: scenario` block is the snippet the agent guide shows for testing.
+
+scenario "ping responds"
+    when GET "/ping"
+    then status 200
+    then response is { body: { ok: true } }
+
+# region: scenario
+scenario "returns an account"
+    given doc.accounts.find("a1") returns { owner: "Ana" }
+    when GET "/accounts/a1"
+    then status 200
+# endregion
+
+scenario "exposes request inputs directly"
+    given auth.primer_jwt returns { sub: "svc-1" }
+    given doc.accounts.find("a1") returns { owner: "Ana" }
+    when GET "/accounts/a1/owner"
+    then status 200
+    then response is { body: { id: "a1", owner: "svc-1" } }
+
+scenario "validates and creates an account"
+    given doc.accounts.save(anything) returns { owner: "Ana" }
+    when POST "/accounts" with { owner: "Ana" }
+    then status 201
+    then response is { body: { owner: "Ana" } }
+
+scenario "caches a rate"
+    given cache.set("rate:usd", 5) returns true
+    when POST "/rates"
+    then status 202
+
+scenario "search reads a typed query"
+    when GET "/search?term=widgets&tags=a&tags=b"
+    then status 200
+    then response is { body: { term: "widgets" } }
